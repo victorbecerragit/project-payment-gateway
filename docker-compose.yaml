@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  payment-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: payment-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
