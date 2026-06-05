@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-gateway-config
+  namespace: default
+  labels:
+    app: payment-gateway
+data:
+  PORT: "8080"
+  LOG_LEVEL: "info"

@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: Payment Gateway API
+  description: |
+    A simple payment gateway API for processing payments, checking payment status, and handling webhooks.
+    
+    This API provides endpoints for:
+    - Creating payment transactions
+    - Retrieving payment information
+    - Checking payment status
+    - Receiving webhook notifications from payment providers
+    
+    ## Authentication
+    In production, all endpoints should be authenticated using API keys or OAuth2.
+    
+    ## Rate Limiting
+    API calls are rate-limited to prevent abuse. Current limits:
+    - 100 requests per minute per API key
+    - 1000 requests per hour per API key
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.payment-gateway.example.com
+    description: Production server
+
+tags:
+  - name: health
+    description: Health and readiness checks
+  - name: payments
+    description: Payment operations
+  - name: webhooks
+    description: Webhook endpoints for payment provider notifications
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      description: Check if the service is healthy and running
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  time:
+                    type: string
+                    format: date-time
+                    example: '2024-01-15T10:00:00Z'
+
+  /ready:
+    get:
+      tags:
+        - health
+      summary: Readiness check
+      description: Check if the service is ready to accept requests
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  time:
+                    type: string
+                    format: date-time
+                    example: '2024-01-15T10:00:00Z'
+
+  /api/v1/payments:
+    post:
+      tags:
+        - payments
+      summary: Create a new payment
+      description: Initiate a new payment transaction
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '201':
+          description: Payment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    get:
+      tags:
+        - payments
+      summary: Get payment details
+      description: Retrieve details of a specific payment
+      operationId: getPayment
+      parameters:
+        - name: payment_id
+          in: query
+          required: true
+          description: The unique identifier of the payment
+          schema:
+            type: string
+            example: pay_20240115100000
+      responses:
+        '200':
+          description: Payment details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/payments/status:
+    get:
+      tags:
+        - payments
+      summary: Get payment status
+      description: Check the current status of a payment
+      operationId: getPaymentStatus
+      parameters:
+        - name: payment_id
+          in: query
+          required: true
+          description: The unique identifier of the payment
+          schema:
+            type: string
+            example: pay_20240115100000
+      responses:
+        '200':
+          description: Payment status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentStatus'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/webhooks/payment:
+    post:
+      tags:
+        - webhooks
+      summary: Payment webhook
+      description: Receive webhook notifications from payment providers
+      operationId: paymentWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPayload'
+      responses:
+        '200':
+          description: Webhook received and processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: received
+                  message:
+                    type: string
+                    example: Webhook processed successfully
+        '400':
+          description: Invalid webhook payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    PaymentRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - customer_id
+      properties:
+        amount:
+          type: number
+          format: double
+          description: Payment amount
+          minimum: 0.01
+          example: 99.99
+        currency:
+          type: string
+          description: Currency code (ISO 4217)
+          minLength: 3
+          maxLength: 3
+          example: USD
+        description:
+          type: string
+          description: Payment description
+          maxLength: 500
+          example: Order #12345
+        customer_id:
+          type: string
+          description: Unique customer identifier
+          example: cust_123456
+        card_token:
+          type: string
+          description: Tokenized card information (optional)
+          example: tok_visa_4242
+
+    PaymentResponse:
+      type: object
+      properties:
+        payment_id:
+          type: string
+          description: Unique payment identifier
+          example: pay_20240115100000
+        status:
+          type: string
+          description: Payment status
+          enum: [pending, processing, completed, failed, cancelled]
+          example: pending
+        amount:
+          type: number
+          format: double
+          description: Payment amount
+          example: 99.99
+        currency:
+          type: string
+          description: Currency code
+          example: USD
+        transaction_id:
+          type: string
+          description: External transaction identifier
+          example: txn_20240115100000
+        created_at:
+          type: string
+          format: date-time
+          description: Payment creation timestamp
+          example: '2024-01-15T10:00:00Z'
+
+    PaymentStatus:
+      type: object
+      properties:
+        payment_id:
+          type: string
+          description: Unique payment identifier
+          example: pay_20240115100000
+        status:
+          type: string
+          description: Current payment status
+          enum: [pending, processing, completed, failed, cancelled]
+          example: completed
+        transaction_id:
+          type: string
+          description: External transaction identifier
+          example: txn_20240115100000
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: '2024-01-15T10:05:00Z'
+
+    WebhookPayload:
+      type: object
+      required:
+        - event_type
+        - payment_id
+        - status
+      properties:
+        event_type:
+          type: string
+          description: Type of webhook event
+          enum: [payment.created, payment.updated, payment.completed, payment.failed]
+          example: payment.completed
+        payment_id:
+          type: string
+          description: Unique payment identifier
+          example: pay_20240115100000
+        status:
+          type: string
+          description: Payment status
+          example: completed
+        transaction_id:
+          type: string
+          description: External transaction identifier
+          example: txn_20240115100000
+        timestamp:
+          type: string
+          format: date-time
+          description: Event timestamp
+          example: '2024-01-15T10:05:00Z'
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: Bad Request
+        message:
+          type: string
+          description: Error message
+          example: Invalid payment amount
+        code:
+          type: integer
+          description: HTTP status code
+          example: 400
