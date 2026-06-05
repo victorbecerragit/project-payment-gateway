@@ -3,30 +3,36 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 
-	"github.com/victorbecerragit/project-payment-gateway/internal/handlers"
+	"github.com/victorbecerragit/project-payment-gateway/internal/application/health"
+	"github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
+	"github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
+	transport "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/handlers"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	cfg := config.Load()
+
+	// Initialize Repositories
+	paymentRepo := inmemory.NewRepository()
+
+	// Initialize Services
+	healthService := health.NewService()
+	paymentService := payment.NewService(paymentRepo)
+
+	// Initialize Handlers
+	healthHandler := handlers.NewHealthHandler(healthService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService)
 
 	mux := http.NewServeMux()
 
-	// Health check endpoints
-	mux.HandleFunc("/health", handlers.HealthHandler)
-	mux.HandleFunc("/ready", handlers.ReadyHandler)
+	// Setup routes using the new router
+	transport.SetupRoutes(mux, paymentHandler, healthHandler)
 
-	// Payment API endpoints
-	mux.HandleFunc("/api/v1/payments", handlers.PaymentHandler)
-	mux.HandleFunc("/api/v1/payments/status", handlers.PaymentStatusHandler)
-	mux.HandleFunc("/api/v1/webhooks/payment", handlers.WebhookHandler)
-
-	log.Printf("Starting payment gateway server on port %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	log.Printf("Starting payment gateway server on port %s", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

@@ -2,6 +2,15 @@ package models
 
 import "time"
 
+// Payment statuses
+const (
+	StatusPending    = "pending"
+	StatusProcessing = "processing"
+	StatusCompleted  = "completed"
+	StatusFailed     = "failed"
+	StatusCancelled  = "cancelled"
+)
+
 // PaymentRequest represents a payment initiation request
 type PaymentRequest struct {
 	Amount      float64 `json:"amount"`
@@ -43,4 +52,18 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
 	Code    int    `json:"code"`
+}
+
+// Payment represents a payment record
+type Payment struct {
+	ID             string    `json:"id"`
+	Amount         float64   `json:"amount"`
+	Currency       string    `json:"currency"`
+	Status         string    `json:"status"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	TransactionID  string    `json:"transaction_id,omitempty"`
+	CustomerID     string    `json:"customer_id"`
+	Description    string    `json:"description,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }

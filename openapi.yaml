@@ -93,6 +93,14 @@ paths:
       summary: Create a new payment
       description: Initiate a new payment transaction
       operationId: createPayment
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          description: Unique key to prevent duplicate processing of the same request
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
@@ -118,16 +126,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-    
+
+  /api/v1/payments/{payment_id}:
     get:
       tags:
         - payments
       summary: Get payment details
-      description: Retrieve details of a specific payment
+      description: Retrieve details of a specific payment by ID
       operationId: getPayment
       parameters:
         - name: payment_id
-          in: query
+          in: path
           required: true
           description: The unique identifier of the payment
           schema:
@@ -153,40 +162,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/payments/status:
-    get:
-      tags:
-        - payments
-      summary: Get payment status
-      description: Check the current status of a payment
-      operationId: getPaymentStatus
-      parameters:
-        - name: payment_id
-          in: query
-          required: true
-          description: The unique identifier of the payment
-          schema:
-            type: string
-            example: pay_20240115100000
-      responses:
-        '200':
-          description: Payment status retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaymentStatus'
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Payment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/webhooks/payment:
     post:
@@ -195,6 +170,13 @@ paths:
       summary: Payment webhook
       description: Receive webhook notifications from payment providers
       operationId: paymentWebhook
+      parameters:
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          description: Signature to verify the authenticity of the webhook
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -209,12 +191,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: received
-                  message:
-                    type: string
-                    example: Webhook processed successfully
+                  received:
+                    type: boolean
+                    example: true
         '400':
           description: Invalid webhook payload
           content:
@@ -303,8 +282,11 @@ components:
         transaction_id:
           type: string
           description: External transaction identifier
-          example: txn_20240115100000
-        updated_at:
+          example: txn_20240115100000        timestamp:
+          type: string
+          format: date-time
+          description: Webhook event timestamp
+          example: '2024-01-15T10:05:00Z'        updated_at:
           type: string
           format: date-time
           description: Last update timestamp
@@ -329,6 +311,7 @@ components:
         status:
           type: string
           description: Payment status
+          enum: [pending, processing, completed, failed, cancelled]
           example: completed
         transaction_id:
           type: string
