@@ -5,7 +5,8 @@ import (
 	"net/http"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
-	"github.com/victorbecerragit/project-payment-gateway/internal/models"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
 type PaymentHandler struct {
@@ -17,20 +18,20 @@ func NewPaymentHandler(s payment.Service) *PaymentHandler {
 }
 
 func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
-	var req models.PaymentRequest
+	var req dto.PaymentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Invalid request body")
 		return
 	}
 
 	idempotencyKey := r.Header.Get("X-Idempotency-Key")
 	if idempotencyKey == "" {
-		h.respondWithError(w, http.StatusBadRequest, "X-Idempotency-Key header is required")
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "X-Idempotency-Key header is required")
 		return
 	}
 
 	// Map DTO to Domain model
-	p := &models.Payment{
+	p := &payment.Payment{
 		Amount:      req.Amount,
 		Currency:    req.Currency,
 		Description: req.Description,
@@ -40,81 +41,77 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.CreatePayment(r.Context(), p); err != nil {
-		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
 		return
 	}
 
 	// Map Domain model back to Response DTO
-	resp := models.PaymentResponse{
+	resp := dto.PaymentResponse{
 		PaymentID:     p.ID,
-		Status:        p.Status,
+		Status:        string(p.Status),
 		Amount:        p.Amount,
 		Currency:      p.Currency,
 		TransactionID: p.TransactionID,
 		CreatedAt:     p.CreatedAt,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	response.RespondWithJSON(w, http.StatusCreated, resp)
 }
 
 func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("payment_id")
-	if id == "" {
-		h.respondWithError(w, http.StatusBadRequest, "Payment ID is required")
+	paymentID := r.PathValue("payment_id")
+	if paymentID == "" {
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Payment ID is required")
 		return
 	}
 
-	p, err := h.service.GetPayment(r.Context(), id)
+	p, err := h.service.GetPayment(r.Context(), paymentID)
 	if err != nil {
-		h.respondWithError(w, http.StatusNotFound, "Payment not found")
+		response.RespondWithError(w, http.StatusNotFound, "Not Found", "Payment not found")
 		return
 	}
 
 	// Map Domain model back to Response DTO
-	resp := models.PaymentResponse{
+	resp := dto.PaymentStatusResponse{
 		PaymentID:     p.ID,
-		Status:        p.Status,
-		Amount:        p.Amount,
-		Currency:      p.Currency,
+		Status:        string(p.Status),
 		TransactionID: p.TransactionID,
-		CreatedAt:     p.CreatedAt,
+		Timestamp:     p.UpdatedAt,
+		UpdatedAt:     p.UpdatedAt,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	response.RespondWithJSON(w, http.StatusOK, resp)
 }
 
 func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Check for webhook signature as required by OpenAPI
 	signature := r.Header.Get("X-Webhook-Signature")
 	if signature == "" {
-		h.respondWithError(w, http.StatusUnauthorized, "X-Webhook-Signature header is required")
+		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "X-Webhook-Signature header is required")
 		return
 	}
 
-	var payload models.WebhookPayload
+	var payload dto.WebhookPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		h.respondWithError(w, http.StatusBadRequest, "Invalid webhook payload")
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Invalid webhook payload")
 		return
 	}
 
 	// TODO: Validate webhook signature
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{
-		"received": true,
-	})
-}
+	event := &payment.PaymentEvent{
+		Type:          payment.EventType(payload.EventType),
+		PaymentID:     payload.PaymentID,
+		TransactionID: payload.TransactionID,
+		Timestamp:     payload.Timestamp,
+	}
 
-func (h *PaymentHandler) respondWithError(w http.ResponseWriter, code int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(models.ErrorResponse{
-		Error:   http.StatusText(code),
-		Message: message,
-		Code:    code,
+	if err := h.service.ProcessEvent(r.Context(), event); err != nil {
+		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", "Failed to process webhook")
+		return
+	}
+
+	response.RespondWithJSON(w, http.StatusOK, map[string]bool{
+		"received": true,
 	})
 }

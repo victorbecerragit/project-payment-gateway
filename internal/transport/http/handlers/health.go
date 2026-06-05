@@ -1,11 +1,11 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/application/health"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
 type HealthHandler struct {
@@ -17,26 +17,31 @@ func NewHealthHandler(s health.Service) *HealthHandler {
 }
 
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	status := "down"
+	status := "unhealthy"
+	statusCode := http.StatusOK
 	if h.service.Health() {
-		status = "up"
+		status = "healthy"
 	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		statusCode = http.StatusServiceUnavailable
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	response.RespondWithJSON(w, statusCode, map[string]any{
 		"status": status,
 		"time":   time.Now().Format(time.RFC3339),
 	})
 }
 
 func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	status := "not_ready"
+	statusCode := http.StatusOK
 	if h.service.Ready() {
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		status = "ready"
 	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready"})
+		statusCode = http.StatusServiceUnavailable
 	}
+
+	response.RespondWithJSON(w, statusCode, map[string]any{
+		"status": status,
+		"time":   time.Now().Format(time.RFC3339),
+	})
 }

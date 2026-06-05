@@ -200,6 +200,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - missing or invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
@@ -282,11 +288,13 @@ components:
         transaction_id:
           type: string
           description: External transaction identifier
-          example: txn_20240115100000        timestamp:
+          example: txn_20240115100000
+        timestamp:
           type: string
           format: date-time
           description: Webhook event timestamp
-          example: '2024-01-15T10:05:00Z'        updated_at:
+          example: '2024-01-15T10:05:00Z'
+        updated_at:
           type: string
           format: date-time
           description: Last update timestamp

@@ -1,5 +1,4 @@
 package inmemory
-package inmemory
 
 import (
 	"context"
@@ -7,29 +6,28 @@ import (
 	"sync"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
-	"github.com/victorbecerragit/project-payment-gateway/internal/models"
 )
 
 type repository struct {
 	mu       sync.RWMutex
-	payments map[string]*models.Payment
+	payments map[string]*payment.Payment
 }
 
 // NewRepository creates a new in-memory payment repository
 func NewRepository() payment.Repository {
 	return &repository{
-		payments: make(map[string]*models.Payment),
+		payments: make(map[string]*payment.Payment),
 	}
 }
 
-func (r *repository) Save(ctx context.Context, p *models.Payment) error {
+func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.payments[p.ID] = p
 	return nil
 }
 
-func (r *repository) GetByID(ctx context.Context, id string) (*models.Payment, error) {
+func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	p, ok := r.payments[id]
@@ -39,7 +37,7 @@ func (r *repository) GetByID(ctx context.Context, id string) (*models.Payment, e
 	return p, nil
 }
 
-func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*models.Payment, error) {
+func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*payment.Payment, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, p := range r.payments {

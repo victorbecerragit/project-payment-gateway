@@ -91,13 +91,17 @@ The development team has created a Go-based payment gateway with the following c
 ### Application Structure
 ```
 project-payment-gateway/
-├── cmd/api/              # Application entry point
-│   └── main.go          # HTTP server setup and routing
+├── cmd/api/                              # Application entry point
 ├── internal/
-│   ├── handlers/        # HTTP request handlers
-│   │   └── handlers.go  # Payment, health, webhook handlers
-│   └── models/          # Data models
-│       └── payment.go   # Payment request/response models
+│   ├── domain/payment/                   # Business logic and entities
+│   ├── application/payment/              # Use-case orchestration
+│   ├── transport/http/                   # HTTP transport layer
+│   │   ├── handlers/                     # Request handlers
+│   │   ├── dto/                          # Data Transfer Objects
+│   │   ├── response/                     # Helper package for responses
+│   │   └── middleware/                   # HTTP middlewares
+│   └── platform/                         # Infrastructure helpers
+```
 ├── k8s/                 # Kubernetes manifests
 ├── openapi.yaml         # OpenAPI 3.0 specification
 ├── Dockerfile           # Multi-stage container build
@@ -111,8 +115,7 @@ project-payment-gateway/
 | `/health` | GET | Liveness probe |
 | `/ready` | GET | Readiness probe |
 | `/api/v1/payments` | POST | Create payment |
-| `/api/v1/payments` | GET | Retrieve payment |
-| `/api/v1/payments/status` | GET | Check payment status |
+| `/api/v1/payments/{payment_id}` | GET | Retrieve payment status and details |
 | `/api/v1/webhooks/payment` | POST | Receive payment webhooks |
 
 ### OpenAPI Documentation
