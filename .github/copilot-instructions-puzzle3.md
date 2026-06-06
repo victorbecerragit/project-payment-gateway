@@ -16,7 +16,7 @@ The current code shows useful progress:
 
 However, there are still issues to address before deeper PSP integration begins:
 
-- The domain interfaces still depend on transport DTOs (e.g. `internal/transport/http/dto`), so domain ownership is not yet clean.
+-- The domain interfaces still depend on transport DTOs (e.g. `internal/transport/http/dto`), so domain ownership is not yet clean.
 - Webhook signatures are only checked for presence, not actually verified.
 - The `/ready` response still appears to drift from the documented OpenAPI response shape.
 - The in-memory repository file appears to contain a duplicated `package inmemory` declaration that should be fixed immediately if present in the repo.
@@ -70,7 +70,7 @@ Tasks:
 - Create a domain payment entity under `internal/domain/payment`.
 - Move status constants or enum-like values into the domain package.
 - Move any invariants such as positive amount and required currency into domain constructors or validation methods where appropriate.
-- Refactor repository and service interfaces to depend on domain types instead of `internal/models`.
+-- Refactor repository and service interfaces to depend on domain types instead of transport DTOs (for example `internal/transport/http/dto`).
 
 Suggested target shape:
 
@@ -82,18 +82,18 @@ internal/domain/payment/
   service.go
 ```
 
-Definition of done:
+- Definition of done:
 
-- The domain package no longer imports `internal/models`.
+- The domain package no longer imports transport DTO packages (for example `internal/transport/http/dto`).
 - Repositories accept and return domain payment entities.
 
 ### PR 3 — Transport DTO split
 
-Goal: make the legacy `internal/models` either transport-only or replace it with `internal/transport/http/dto`.
+Goal: make any legacy model package transport-only or replace it with `internal/transport/http/dto`.
 
 Tasks:
 
-- Decide whether to keep any legacy `internal/models` temporarily or replace it with `internal/transport/http/dto`.
+-- Decide whether to keep any legacy model package temporarily or replace it with `internal/transport/http/dto`.
 - Define request and response DTOs that mirror `openapi.yaml` exactly.
 - Add explicit mapping functions between DTOs and domain entities.
 - Keep card token or provider-specific request fields out of the core payment entity unless they are truly domain-relevant.
