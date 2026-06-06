@@ -4,15 +4,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/victorbecerragit/project-payment-gateway/internal/application/health"
+	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
 type HealthHandler struct {
-	service health.Service
+	service apphealth.Service
 }
 
-func NewHealthHandler(s health.Service) *HealthHandler {
+func NewHealthHandler(s apphealth.Service) *HealthHandler {
 	return &HealthHandler{service: s}
 }
 
@@ -32,7 +32,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
-	status := "not_ready"
+	status := "unhealthy"
 	statusCode := http.StatusOK
 	if h.service.Ready() {
 		status = "ready"

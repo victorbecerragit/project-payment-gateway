@@ -1,4 +1,4 @@
-package health
+package apphealth
 
 type Service interface {
 	Health() bool

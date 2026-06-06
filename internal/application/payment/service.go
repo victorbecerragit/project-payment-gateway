@@ -1,4 +1,4 @@
-package payment
+package apppayment
 
 import (
 	"context"
@@ -8,11 +8,17 @@ import (
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/id"
 )
 
+type Service interface {
+	CreatePayment(ctx context.Context, p *payment.Payment) error
+	GetPayment(ctx context.Context, paymentID string) (*payment.Payment, error)
+	ProcessEvent(ctx context.Context, e *payment.PaymentEvent) error
+}
+
 type service struct {
 	repo payment.Repository
 }
 
-func NewService(repo payment.Repository) payment.Service {
+func NewService(repo payment.Repository) Service {
 	return &service{
 		repo: repo,
 	}

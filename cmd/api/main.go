@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/victorbecerragit/project-payment-gateway/internal/application/health"
-	"github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
+	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
 	"github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 	transport "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
@@ -19,8 +19,8 @@ func main() {
 	paymentRepo := inmemory.NewRepository()
 
 	// Initialize Services
-	healthService := health.NewService()
-	paymentService := payment.NewService(paymentRepo)
+	healthService := apphealth.NewService()
+	paymentService := apppayment.NewService(paymentRepo)
 
 	// Initialize Handlers
 	healthHandler := handlers.NewHealthHandler(healthService)

@@ -4,16 +4,17 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	dompayment "github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
 type PaymentHandler struct {
-	service payment.Service
+	service apppayment.Service
 }
 
-func NewPaymentHandler(s payment.Service) *PaymentHandler {
+func NewPaymentHandler(s apppayment.Service) *PaymentHandler {
 	return &PaymentHandler{service: s}
 }
 
@@ -31,7 +32,7 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Map DTO to Domain model
-	p := &payment.Payment{
+	p := &dompayment.Payment{
 		Amount:      req.Amount,
 		Currency:    req.Currency,
 		Description: req.Description,
@@ -61,7 +62,7 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 	paymentID := r.PathValue("payment_id")
 	if paymentID == "" {
-		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Payment ID is required")
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "payment_id path parameter is required")
 		return
 	}
 
@@ -72,12 +73,13 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Map Domain model back to Response DTO
-	resp := dto.PaymentStatusResponse{
+	resp := dto.PaymentResponse{
 		PaymentID:     p.ID,
 		Status:        string(p.Status),
+		Amount:        p.Amount,
+		Currency:      p.Currency,
 		TransactionID: p.TransactionID,
-		Timestamp:     p.UpdatedAt,
-		UpdatedAt:     p.UpdatedAt,
+		CreatedAt:     p.CreatedAt,
 	}
 
 	response.RespondWithJSON(w, http.StatusOK, resp)
@@ -97,10 +99,15 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Validate webhook signature
+	// Validate webhook signature (skeleton)
+	sig := r.Header.Get("X-Webhook-Signature")
+	if sig == "" {
+		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "Missing X-Webhook-Signature header")
+		return
+	}
 
-	event := &payment.PaymentEvent{
-		Type:          payment.EventType(payload.EventType),
+	event := &dompayment.PaymentEvent{
+		Type:          dompayment.EventType(payload.EventType),
 		PaymentID:     payload.PaymentID,
 		TransactionID: payload.TransactionID,
 		Timestamp:     payload.Timestamp,
