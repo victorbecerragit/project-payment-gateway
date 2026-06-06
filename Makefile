@@ -20,10 +20,22 @@ run: ## Run the application locally
 	@echo "Running $(APP_NAME)..."
 	go run ./cmd/api/main.go
 
-test: ## Run tests
+test: ## Run all tests with race detector and coverage
 	@echo "Running tests..."
 	go test -v -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
+
+test-unit: ## Run unit tests only (no race, fast feedback)
+	@echo "Running unit tests..."
+	go test ./...
+
+test-handlers: ## Run transport/http/handlers tests only
+	@echo "Running handlers tests..."
+	go test -v -run . ./internal/transport/http/handlers/...
+
+test-watch: ## Re-run tests on file changes (requires entr: brew install entr)
+	@echo "Watching for changes..."
+	find . -name '*.go' | entr -c go test ./...
 
 clean: ## Clean build artifacts
 	@echo "Cleaning..."
