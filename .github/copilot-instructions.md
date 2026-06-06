@@ -10,6 +10,7 @@ Observed structure in the repository
 
 - `cmd/api/main.go` starts an HTTP server and registers the current routes.
 - `internal/handlers` and `internal/models` appear to hold request handlers and data models.
+ - `internal/transport/http/handlers` and `internal/transport/http/dto` appear to hold request handlers and transport DTOs.
 - `openapi.yaml` exists and should become the contract source of truth.
 - `Dockerfile`, `docker-compose.yaml`, `Makefile`, and `k8s/*.yaml` provide local and Kubernetes deployment scaffolding.
 - `README.md` frames the project as Kubernetes-ready and OpenAPI-based.
@@ -88,8 +89,9 @@ Goal: understand the scaffold precisely and create a safe refactor seam without 
 Review these files first:
 
 - `cmd/api/main.go`.
-- `internal/handlers/handlers.go`.
-- `internal/models/payment.go`.
+- `internal/transport/http/router.go`.
+- `internal/transport/http/handlers/payment.go`.
+- `internal/transport/http/dto/payment.go`.
 - `Dockerfile`.
 - `Makefile`.
 - `docker-compose.yaml`.
