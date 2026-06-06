@@ -25,10 +25,6 @@ func NewService(repo payment.Repository) Service {
 }
 
 func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
-	if p.Amount <= 0 {
-		return fmt.Errorf("amount must be greater than zero")
-	}
-
 	// Simple idempotency check
 	if p.IdempotencyKey != "" {
 		existing, err := s.repo.GetByIdempotencyKey(ctx, p.IdempotencyKey)
@@ -39,7 +35,7 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 	}
 
 	// Use domain factory to initialize domain-specific fields
-	newPayment := payment.NewPayment(
+	newPayment, err := payment.NewPayment(
 		id.GeneratePaymentID(),
 		id.GenerateTransactionID(),
 		p.CustomerID,
@@ -48,6 +44,9 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 		p.Description,
 		p.IdempotencyKey,
 	)
+	if err != nil {
+		return err // Propagate validation error from domain
+	}
 
 	// Update the original pointer with initial domain state
 	*p = *newPayment

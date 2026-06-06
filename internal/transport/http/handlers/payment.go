@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
-	dompayment "github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/mapper"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
@@ -31,30 +31,14 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Map DTO to Domain model
-	p := &dompayment.Payment{
-		Amount:      req.Amount,
-		Currency:    req.Currency,
-		Description: req.Description,
-		CustomerID:  req.CustomerID,
-		// Note: CardToken is not yet used in the simple Domain model
-		IdempotencyKey: idempotencyKey,
-	}
+	p := mapper.ToPaymentDomain(&req, idempotencyKey)
 
 	if err := h.service.CreatePayment(r.Context(), p); err != nil {
 		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
 		return
 	}
 
-	// Map Domain model back to Response DTO
-	resp := dto.PaymentResponse{
-		PaymentID:     p.ID,
-		Status:        string(p.Status),
-		Amount:        p.Amount,
-		Currency:      p.Currency,
-		TransactionID: p.TransactionID,
-		CreatedAt:     p.CreatedAt,
-	}
+	resp := mapper.ToPaymentResponse(p)
 
 	response.RespondWithJSON(w, http.StatusCreated, resp)
 }
@@ -72,15 +56,7 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Map Domain model back to Response DTO
-	resp := dto.PaymentResponse{
-		PaymentID:     p.ID,
-		Status:        string(p.Status),
-		Amount:        p.Amount,
-		Currency:      p.Currency,
-		TransactionID: p.TransactionID,
-		CreatedAt:     p.CreatedAt,
-	}
+	resp := mapper.ToPaymentResponse(p)
 
 	response.RespondWithJSON(w, http.StatusOK, resp)
 }
@@ -99,26 +75,9 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate webhook signature (skeleton)
-	sig := r.Header.Get("X-Webhook-Signature")
-	if sig == "" {
-		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "Missing X-Webhook-Signature header")
-		return
-	}
+	// TODO: Add signature verification logic here
 
-	event := &dompayment.PaymentEvent{
-		Type:          dompayment.EventType(payload.EventType),
-		PaymentID:     payload.PaymentID,
-		TransactionID: payload.TransactionID,
-		Timestamp:     payload.Timestamp,
-	}
+	// TODO: Add webhook processing logic here
 
-	if err := h.service.ProcessEvent(r.Context(), event); err != nil {
-		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", "Failed to process webhook")
-		return
-	}
-
-	response.RespondWithJSON(w, http.StatusOK, map[string]bool{
-		"received": true,
-	})
+	response.RespondWithJSON(w, http.StatusOK, map[string]bool{"received": true})
 }

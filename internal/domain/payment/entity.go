@@ -79,19 +79,25 @@ func (p *Payment) Transition(next Status) error {
 	return nil
 }
 
-// NewPayment creates a new payment aggregate with initial status and timestamps
-func NewPayment(id, txID, customerID string, amount float64, currency, description, idempotencyKey string) *Payment {
-	now := time.Now()
+// NewPayment creates a new payment with initial state
+func NewPayment(id, transactionID, customerID string, amount float64, currency, description, idempotencyKey string) (*Payment, error) {
+	if amount <= 0 {
+		return nil, fmt.Errorf("payment amount must be positive")
+	}
+	if currency == "" {
+		return nil, fmt.Errorf("currency is required")
+	}
+
 	return &Payment{
 		ID:             id,
-		TransactionID:  txID,
+		TransactionID:  transactionID,
 		CustomerID:     customerID,
 		Amount:         amount,
 		Currency:       currency,
 		Description:    description,
-		IdempotencyKey: idempotencyKey,
 		Status:         StatusPending,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
+		IdempotencyKey: idempotencyKey,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}, nil
 }
