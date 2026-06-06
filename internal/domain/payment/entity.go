@@ -46,18 +46,27 @@ type PaymentEvent struct {
 	Timestamp     time.Time
 }
 
-// CanTransitionTo checks if a status transition is valid
+// validTransitions defines all legal state transitions.
+// pending can only move to processing or cancelled (must process before completing/failing).
+// processing can move to completed, failed, or cancelled.
+// Terminal states (completed, failed, cancelled) accept no further transitions.
+var validTransitions = map[Status][]Status{
+	StatusPending:    {StatusProcessing, StatusCancelled},
+	StatusProcessing: {StatusCompleted, StatusFailed, StatusCancelled},
+}
+
+// CanTransitionTo returns true when transitioning from the current status to next is allowed.
 func (p *Payment) CanTransitionTo(next Status) bool {
-	switch p.Status {
-	case StatusPending:
-		return next == StatusProcessing || next == StatusCompleted || next == StatusFailed || next == StatusCancelled
-	case StatusProcessing:
-		return next == StatusCompleted || next == StatusFailed || next == StatusCancelled
-	case StatusCompleted, StatusFailed, StatusCancelled:
-		return false
-	default:
-		return false
+	allowed, ok := validTransitions[p.Status]
+	if !ok {
+		return false // terminal state
 	}
+	for _, s := range allowed {
+		if s == next {
+			return true
+		}
+	}
+	return false
 }
 
 // Transition updates the payment status if the transition is valid
