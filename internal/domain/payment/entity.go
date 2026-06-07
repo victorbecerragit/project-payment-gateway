@@ -30,22 +30,6 @@ type Payment struct {
 	UpdatedAt      time.Time
 }
 
-// EventType represents a domain event type
-type EventType string
-
-const (
-	EventPaymentCompleted EventType = "payment.completed"
-	EventPaymentFailed    EventType = "payment.failed"
-)
-
-// PaymentEvent is a domain event
-type PaymentEvent struct {
-	Type          EventType
-	PaymentID     string
-	TransactionID string
-	Timestamp     time.Time
-}
-
 // validTransitions defines all legal state transitions.
 // pending can only move to processing or cancelled (must process before completing/failing).
 // processing can move to completed, failed, or cancelled.

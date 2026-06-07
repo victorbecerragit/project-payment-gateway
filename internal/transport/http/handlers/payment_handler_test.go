@@ -48,12 +48,15 @@ func TestHandleWebhook(t *testing.T) {
 	}{
 		{name: "missing signature returns 401", wantStatus: 401},
 		{name: "valid request dispatches event", signatureHeader: "sig", wantStatus: 200, wantPaymentID: "p-1"},
+		{name: "invalid signature returns 401", signatureHeader: "invalid", wantStatus: 401},
 		{name: "service error returns 500", signatureHeader: "sig", serviceErr: errors.New("boom"), wantStatus: 500},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := &fakeService{err: tc.serviceErr}
-			h := NewPaymentHandler(svc)
+			verifier := &mockVerifier{}
+			h := NewPaymentHandler(svc, verifier)
+
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(webhookPayload(t, "p-1")))
 			if tc.signatureHeader != "" {
 				req.Header.Set("X-Webhook-Signature", tc.signatureHeader)
@@ -69,4 +72,13 @@ func TestHandleWebhook(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockVerifier struct{}
+
+func (v *mockVerifier) Verify(ctx context.Context, payload []byte, signature string) error {
+	if signature == "invalid" {
+		return errors.New("invalid signature")
+	}
+	return nil
 }

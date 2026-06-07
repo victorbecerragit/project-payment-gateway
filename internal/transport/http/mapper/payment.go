@@ -1,9 +1,8 @@
 package mapper
-package mapper
 
 import (
 	dompayment "github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
-	"github.comcom/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
 )
 
 // ToPaymentDomain maps a PaymentRequest DTO to a domain Payment entity.
@@ -26,5 +25,15 @@ func ToPaymentResponse(p *dompayment.Payment) *dto.PaymentResponse {
 		Currency:      p.Currency,
 		TransactionID: p.TransactionID,
 		CreatedAt:     p.CreatedAt,
+	}
+}
+
+// ToPaymentEvent maps a WebhookPayload DTO to a domain PaymentEvent.
+func ToPaymentEvent(payload *dto.WebhookPayload) *dompayment.PaymentEvent {
+	return &dompayment.PaymentEvent{
+		Type:          dompayment.EventType(payload.EventType),
+		PaymentID:     payload.PaymentID,
+		TransactionID: payload.TransactionID,
+		Timestamp:     payload.Timestamp,
 	}
 }

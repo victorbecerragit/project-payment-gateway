@@ -1,21 +1,27 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 
-	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/mapper"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
 type PaymentHandler struct {
-	service apppayment.Service
+	service  payment.Service
+	verifier payment.WebhookVerifier
 }
 
-func NewPaymentHandler(s apppayment.Service) *PaymentHandler {
-	return &PaymentHandler{service: s}
+func NewPaymentHandler(s payment.Service, v payment.WebhookVerifier) *PaymentHandler {
+	return &PaymentHandler{
+		service:  s,
+		verifier: v,
+	}
 }
 
 func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
@@ -69,15 +75,33 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read body for verification and decoding
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		response.RespondWithError(w, http.StatusInternalServerError, "Internal Error", "Could not read request body")
+		return
+	}
+
+	// 1. Verify Signature
+	if err := h.verifier.Verify(r.Context(), body, signature); err != nil {
+		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "Invalid webhook signature")
+		return
+	}
+
+	// 2. Decode DTO
 	var payload dto.WebhookPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&payload); err != nil {
 		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Invalid webhook payload")
 		return
 	}
 
-	// TODO: Add signature verification logic here
+	// 3. Map to Domain Event and Process
+	event := mapper.ToPaymentEvent(&payload)
 
-	// TODO: Add webhook processing logic here
+	if err := h.service.ProcessEvent(r.Context(), event); err != nil {
+		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
+		return
+	}
 
 	response.RespondWithJSON(w, http.StatusOK, map[string]bool{"received": true})
 }

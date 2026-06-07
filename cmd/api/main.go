@@ -7,6 +7,7 @@ import (
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
+	"github.com/victorbecerragit/project-payment-gateway/internal/provider/webhook"
 	"github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 	transport "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/handlers"
@@ -21,10 +22,11 @@ func main() {
 	// Initialize Services
 	healthService := apphealth.NewService()
 	paymentService := apppayment.NewService(paymentRepo)
+	webhookVerifier := webhook.NewMockVerifier()
 
 	// Initialize Handlers
 	healthHandler := handlers.NewHealthHandler(healthService)
-	paymentHandler := handlers.NewPaymentHandler(paymentService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService, webhookVerifier)
 
 	mux := http.NewServeMux()
 

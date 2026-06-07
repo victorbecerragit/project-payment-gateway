@@ -78,6 +78,9 @@ func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) err
 		return err
 	}
 
-	p.TransactionID = e.TransactionID
+	// Only update transaction ID if provided in the event
+	if e.TransactionID != "" {
+		p.TransactionID = e.TransactionID
+	}
 	return s.repo.Save(ctx, p)
 }

@@ -10,8 +10,8 @@ func TestCanTransitionTo(t *testing.T) {
 	if !p.CanTransitionTo(StatusProcessing) {
 		t.Fatalf("expected pending -> processing to be allowed")
 	}
-	if !p.CanTransitionTo(StatusCompleted) {
-		t.Fatalf("expected pending -> completed to be allowed")
+	if p.CanTransitionTo(StatusCompleted) {
+		t.Fatalf("expected pending -> completed to be disallowed (must go through processing)")
 	}
 
 	p.Status = StatusCompleted
