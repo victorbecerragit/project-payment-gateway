@@ -11,6 +11,10 @@ type EventType string
 const (
 	EventPaymentCompleted EventType = "payment.completed"
 	EventPaymentFailed    EventType = "payment.failed"
+	EventPaymentCancelled EventType = "payment.cancelled"
+	// Add other event types here as needed
+	// EventPaymentRefunded EventType = "payment.refunded"
+	// EventPaymentCaptured EventType = "payment.captured"
 )
 
 // PaymentEvent is a normalized domain event representing an external update (e.g., from a webhook)

@@ -6,6 +6,7 @@ import (
 
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment" // Import domain payment
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider/webhook"
 	"github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
@@ -15,6 +16,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Initialize domain-level configurations
+	payment.SetSupportedCurrencies(cfg.SupportedCurrencies)
 
 	// Initialize Repositories
 	paymentRepo := inmemory.NewRepository()

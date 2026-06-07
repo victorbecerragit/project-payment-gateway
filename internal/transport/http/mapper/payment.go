@@ -8,10 +8,10 @@ import (
 // ToPaymentDomain maps a PaymentRequest DTO to a domain Payment entity.
 func ToPaymentDomain(req *dto.PaymentRequest, idempotencyKey string) *dompayment.Payment {
 	return &dompayment.Payment{
-		Amount:         req.Amount,
-		Currency:       req.Currency,
+		Amount:         dompayment.MustNewAmount(req.Amount),
+		Currency:       dompayment.Currency(req.Currency), // NewPayment will normalize case
 		Description:    req.Description,
-		CustomerID:     req.CustomerID,
+		CustomerID:     dompayment.MustNewCustomerID(req.CustomerID),
 		IdempotencyKey: idempotencyKey,
 	}
 }
@@ -21,8 +21,8 @@ func ToPaymentResponse(p *dompayment.Payment) *dto.PaymentResponse {
 	return &dto.PaymentResponse{
 		PaymentID:     p.ID,
 		Status:        string(p.Status),
-		Amount:        p.Amount,
-		Currency:      p.Currency,
+		Amount:        p.Amount.Value(),
+		Currency:      string(p.Currency),
 		TransactionID: p.TransactionID,
 		CreatedAt:     p.CreatedAt,
 	}

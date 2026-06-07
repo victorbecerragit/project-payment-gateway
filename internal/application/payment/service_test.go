@@ -10,14 +10,17 @@ import (
 )
 
 func TestCreatePayment_Idempotency(t *testing.T) {
+	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	payment.SetSupportedCurrencies([]string{"USD"})
+	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
 	repo := inmemory.NewRepository()
 	svc := apppayment.NewService(repo)
 	ctx := context.Background()
 
 	p := &payment.Payment{
-		Amount:         50.0,
-		Currency:       "USD",
-		CustomerID:     "cust-1",
+		Amount:         payment.MustNewAmount(50.0),
+		Currency:       payment.Currency("USD"),
+		CustomerID:     payment.MustNewCustomerID("cust_1"),
 		Description:    "test",
 		IdempotencyKey: "idem-123",
 	}
@@ -33,9 +36,9 @@ func TestCreatePayment_Idempotency(t *testing.T) {
 
 	// Second create with same idempotency key should return existing
 	p2 := &payment.Payment{
-		Amount:         50.0,
-		Currency:       "USD",
-		CustomerID:     "cust-1",
+		Amount:         payment.MustNewAmount(50.0),
+		Currency:       payment.Currency("USD"),
+		CustomerID:     payment.MustNewCustomerID("cust_1"),
 		Description:    "test",
 		IdempotencyKey: "idem-123",
 	}

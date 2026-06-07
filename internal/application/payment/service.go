@@ -38,9 +38,9 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 	newPayment, err := payment.NewPayment(
 		id.GeneratePaymentID(),
 		id.GenerateTransactionID(),
-		p.CustomerID,
-		p.Amount,
-		p.Currency,
+		p.CustomerID.Value(),
+		p.Amount.Value(),
+		string(p.Currency), // NewPayment expects string, not Currency type
 		p.Description,
 		p.IdempotencyKey,
 	)
@@ -70,8 +70,22 @@ func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) err
 		nextStatus = payment.StatusCompleted
 	case payment.EventPaymentFailed:
 		nextStatus = payment.StatusFailed
+	case payment.EventPaymentCancelled:
+		nextStatus = payment.StatusCancelled
 	default:
 		return fmt.Errorf("unknown event type: %s", e.Type)
+	}
+
+	// Idempotency: if the payment has already reached the status reported by the event, stop here.
+	if p.Status == nextStatus {
+		return nil
+	}
+
+	// Domain rules require Pending -> Processing before reaching terminal states (Completed, Failed, or Cancelled).
+	if p.Status == payment.StatusPending {
+		if err := p.Transition(payment.StatusProcessing); err != nil {
+			return err
+		}
 	}
 
 	if err := p.Transition(nextStatus); err != nil {

@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -40,7 +41,7 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 	p := mapper.ToPaymentDomain(&req, idempotencyKey)
 
 	if err := h.service.CreatePayment(r.Context(), p); err != nil {
-		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
+		h.handleServiceError(w, err)
 		return
 	}
 
@@ -58,7 +59,11 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 
 	p, err := h.service.GetPayment(r.Context(), paymentID)
 	if err != nil {
-		response.RespondWithError(w, http.StatusNotFound, "Not Found", "Payment not found")
+		if errors.Is(err, payment.ErrPaymentNotFound) {
+			response.RespondWithError(w, http.StatusNotFound, "Not Found", "Payment not found")
+		} else {
+			response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
+		}
 		return
 	}
 
@@ -99,9 +104,33 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	event := mapper.ToPaymentEvent(&payload)
 
 	if err := h.service.ProcessEvent(r.Context(), event); err != nil {
-		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
+		h.handleServiceError(w, err)
 		return
 	}
 
 	response.RespondWithJSON(w, http.StatusOK, map[string]bool{"received": true})
+}
+
+// handleServiceError maps domain and application errors to appropriate HTTP responses
+func (h *PaymentHandler) handleServiceError(w http.ResponseWriter, err error) {
+	var payErr *payment.PaymentError
+	if errors.As(err, &payErr) {
+		statusCode := http.StatusInternalServerError
+		errorTitle := "Internal Server Error"
+
+		switch payErr.Type {
+		case payment.ErrorTypeDomain:
+			statusCode = http.StatusBadRequest
+			errorTitle = "Bad Request"
+		case payment.ErrorTypeStateMachine:
+			statusCode = http.StatusConflict
+			errorTitle = "Conflict"
+		}
+
+		response.RespondWithError(w, statusCode, errorTitle, payErr.Message)
+		return
+	}
+
+	// Default fallback for unexpected errors
+	response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
 }

@@ -55,6 +55,9 @@ func paymentAt(s Status) *Payment {
 
 func TestCanTransitionTo_LegalTransitions(t *testing.T) {
 	for _, tc := range legalTransitions {
+		originalSupportedCurrencies := globalSupportedCurrencies
+		SetSupportedCurrencies([]string{"USD"})
+		defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 		p := paymentAt(tc.from)
 		if !p.CanTransitionTo(tc.to) {
 			t.Errorf("expected %s->%s to be LEGAL, but was rejected", tc.from, tc.to)
@@ -64,6 +67,9 @@ func TestCanTransitionTo_LegalTransitions(t *testing.T) {
 
 func TestCanTransitionTo_IllegalTransitions(t *testing.T) {
 	for _, tc := range illegalTransitions {
+		originalSupportedCurrencies := globalSupportedCurrencies
+		SetSupportedCurrencies([]string{"USD"})
+		defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 		p := paymentAt(tc.from)
 		if p.CanTransitionTo(tc.to) {
 			t.Errorf("expected %s->%s to be ILLEGAL, but was allowed", tc.from, tc.to)
@@ -72,6 +78,9 @@ func TestCanTransitionTo_IllegalTransitions(t *testing.T) {
 }
 
 func TestTransition_LegalPath(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	p := paymentAt(StatusPending)
 	if err := p.Transition(StatusProcessing); err != nil {
 		t.Fatalf("pending->processing: unexpected error: %v", err)
@@ -88,6 +97,9 @@ func TestTransition_LegalPath(t *testing.T) {
 }
 
 func TestTransition_FailurePath(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	p := paymentAt(StatusPending)
 	_ = p.Transition(StatusProcessing)
 	if err := p.Transition(StatusFailed); err != nil {
@@ -99,6 +111,9 @@ func TestTransition_FailurePath(t *testing.T) {
 }
 
 func TestTransition_CancelFromPending(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	p := paymentAt(StatusPending)
 	if err := p.Transition(StatusCancelled); err != nil {
 		t.Fatalf("pending->cancelled: unexpected error: %v", err)
@@ -109,6 +124,9 @@ func TestTransition_CancelFromPending(t *testing.T) {
 }
 
 func TestTransition_CancelFromProcessing(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	p := paymentAt(StatusPending)
 	_ = p.Transition(StatusProcessing)
 	if err := p.Transition(StatusCancelled); err != nil {
@@ -117,6 +135,9 @@ func TestTransition_CancelFromProcessing(t *testing.T) {
 }
 
 func TestTransition_SkipProcessingIsIllegal(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	p := paymentAt(StatusPending)
 	if err := p.Transition(StatusCompleted); err == nil {
 		t.Error("expected error skipping processing, got nil")
@@ -127,6 +148,9 @@ func TestTransition_SkipProcessingIsIllegal(t *testing.T) {
 }
 
 func TestTransition_TerminalStatesAreImmutable(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	terminals := []Status{StatusCompleted, StatusFailed, StatusCancelled}
 	next := []Status{StatusPending, StatusProcessing, StatusCompleted, StatusFailed, StatusCancelled}
 	for _, from := range terminals {
@@ -143,6 +167,9 @@ func TestTransition_TerminalStatesAreImmutable(t *testing.T) {
 }
 
 func TestTransition_UpdatedAtIsSet(t *testing.T) {
+	originalSupportedCurrencies := globalSupportedCurrencies
+	SetSupportedCurrencies([]string{"USD"})
+	defer func() { globalSupportedCurrencies = originalSupportedCurrencies }()
 	p := paymentAt(StatusPending)
 	before := p.UpdatedAt
 	_ = p.Transition(StatusProcessing)
