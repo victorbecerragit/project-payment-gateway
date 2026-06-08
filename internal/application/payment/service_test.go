@@ -6,15 +6,20 @@ import (
 
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	inmemory "github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 )
 
 func TestCreatePayment_Idempotency(t *testing.T) {
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD"})
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo)
+	svc := apppayment.NewService(repo, provider.NewMockProvider())
 	ctx := context.Background()
 
 	p := &payment.Payment{

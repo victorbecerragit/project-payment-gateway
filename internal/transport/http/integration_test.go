@@ -10,6 +10,8 @@ import (
 
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider/webhook"
 	"github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 	gatewayhttp "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
@@ -23,7 +25,8 @@ import (
 func TestPaymentFlow_Integration(t *testing.T) {
 	// 1. Setup dependencies and router
 	repo := inmemory.NewRepository()
-	paymentSvc := apppayment.NewService(repo)
+	paymentProvider := provider.NewMockProvider()
+	paymentSvc := apppayment.NewService(repo, paymentProvider)
 	healthSvc := apphealth.NewService()
 	verifier := webhook.NewMockVerifier()
 
@@ -33,7 +36,11 @@ func TestPaymentFlow_Integration(t *testing.T) {
 	mux := http.NewServeMux()
 
 	// Temporarily set supported currencies for this test
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD", "EUR", "GBP"}) // Set a default set for tests
 	gatewayhttp.SetupRoutes(mux, paymentHandler, healthHandler)
 
@@ -42,12 +49,12 @@ func TestPaymentFlow_Integration(t *testing.T) {
 
 	client := ts.Client()
 
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	// 2. Create Payment (POST /api/v1/payments)
 	paymentReq := dto.PaymentRequest{
 		Amount:      150.75,
 		Currency:    "EUR",
-		CustomerID:  "user_789",
+		CustomerID:  "cust_789",
 		Description: "Order #456",
 	}
 	reqBody, _ := json.Marshal(paymentReq)

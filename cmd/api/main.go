@@ -8,6 +8,7 @@ import (
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment" // Import domain payment
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
+	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider/webhook"
 	"github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 	transport "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
@@ -23,9 +24,12 @@ func main() {
 	// Initialize Repositories
 	paymentRepo := inmemory.NewRepository()
 
+	// Initialize Provider (currently using mock; swap with Stripe/PayPal adapter when ready)
+	paymentProvider := provider.NewMockProvider()
+
 	// Initialize Services
 	healthService := apphealth.NewService()
-	paymentService := apppayment.NewService(paymentRepo)
+	paymentService := apppayment.NewService(paymentRepo, paymentProvider)
 	webhookVerifier := webhook.NewMockVerifier()
 
 	// Initialize Handlers

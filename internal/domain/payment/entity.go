@@ -32,6 +32,15 @@ func SetSupportedCurrencies(currencies []string) {
 	}
 }
 
+// GetSupportedCurrencies returns a copy of the currently supported currencies for testing.
+func GetSupportedCurrencies() map[Currency]bool {
+	result := make(map[Currency]bool)
+	for k, v := range globalSupportedCurrencies {
+		result[k] = v
+	}
+	return result
+}
+
 // IsValid checks if the currency is supported by the gateway
 func (c Currency) IsValid() bool {
 	return globalSupportedCurrencies[c]

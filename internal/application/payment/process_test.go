@@ -6,15 +6,20 @@ import (
 
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	inmemory "github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 )
 
 func TestProcessEvent_CompletesPayment(t *testing.T) {
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD"})
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo)
+	svc := apppayment.NewService(repo, provider.NewMockProvider())
 	ctx := context.Background()
 
 	// create payment
@@ -52,11 +57,15 @@ func TestProcessEvent_CompletesPayment(t *testing.T) {
 }
 
 func TestProcessEvent_UnknownType(t *testing.T) {
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD"})
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo)
+	svc := apppayment.NewService(repo, provider.NewMockProvider())
 	ctx := context.Background()
 
 	p := &payment.Payment{
@@ -81,11 +90,15 @@ func TestProcessEvent_UnknownType(t *testing.T) {
 }
 
 func TestProcessEvent_Idempotency(t *testing.T) {
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD"})
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo)
+	svc := apppayment.NewService(repo, provider.NewMockProvider())
 	ctx := context.Background()
 
 	p := &payment.Payment{
@@ -125,11 +138,15 @@ func TestProcessEvent_Idempotency(t *testing.T) {
 }
 
 func TestProcessEvent_FailsPaymentFromPending(t *testing.T) {
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD"})
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo)
+	svc := apppayment.NewService(repo, provider.NewMockProvider())
 	ctx := context.Background()
 
 	// create payment in pending state
@@ -170,11 +187,15 @@ func TestProcessEvent_FailsPaymentFromPending(t *testing.T) {
 }
 
 func TestProcessEvent_CancelsPaymentFromPending(t *testing.T) {
-	originalSupportedCurrencies := payment.globalSupportedCurrencies
+	originalSupportedCurrencies := payment.GetSupportedCurrencies()
+	originalCurrencyStrs := make([]string, 0, len(originalSupportedCurrencies))
+	for k := range originalSupportedCurrencies {
+		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
+	}
 	payment.SetSupportedCurrencies([]string{"USD"})
-	defer func() { payment.globalSupportedCurrencies = originalSupportedCurrencies }()
+	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo)
+	svc := apppayment.NewService(repo, provider.NewMockProvider())
 	ctx := context.Background()
 
 	// Create payment in pending state

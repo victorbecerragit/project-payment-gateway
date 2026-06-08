@@ -3,24 +3,29 @@ package apppayment
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/id"
+	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 )
 
 type Service interface {
 	CreatePayment(ctx context.Context, p *payment.Payment) error
 	GetPayment(ctx context.Context, paymentID string) (*payment.Payment, error)
 	ProcessEvent(ctx context.Context, e *payment.PaymentEvent) error
+	ParseWebhook(ctx context.Context, payload []byte, signature string) (*payment.PaymentEvent, error)
 }
 
 type service struct {
-	repo payment.Repository
+	repo     payment.Repository
+	provider provider.Provider
 }
 
-func NewService(repo payment.Repository) Service {
+func NewService(repo payment.Repository, prov provider.Provider) Service {
 	return &service{
-		repo: repo,
+		repo:     repo,
+		provider: prov,
 	}
 }
 
@@ -50,6 +55,23 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 
 	// Update the original pointer with initial domain state
 	*p = *newPayment
+
+	// Call provider to create payment with provider (e.g., Stripe, PayPal)
+	providerReq := &provider.CreatePaymentRequest{
+		Amount:         int64(p.Amount.Value() * 100), // Convert to cents
+		Currency:       string(p.Currency),
+		Description:    p.Description,
+		CustomerID:     p.CustomerID.Value(),
+		IdempotencyKey: p.IdempotencyKey,
+	}
+
+	providerResp, err := s.provider.CreatePayment(ctx, providerReq)
+	if err != nil {
+		return fmt.Errorf("provider %s failed to create payment: %w", s.provider.Name(), err)
+	}
+
+	// Update payment with provider transaction ID
+	p.TransactionID = providerResp.TransactionID
 
 	return s.repo.Save(ctx, p)
 }
@@ -97,4 +119,35 @@ func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) err
 		p.TransactionID = e.TransactionID
 	}
 	return s.repo.Save(ctx, p)
+}
+
+// ParseWebhook translates a provider-specific webhook payload into a domain PaymentEvent.
+func (s *service) ParseWebhook(ctx context.Context, payload []byte, signature string) (*payment.PaymentEvent, error) {
+	// Delegate to provider to parse webhook
+	webhookEvent, err := s.provider.ParseWebhook(ctx, payload, signature)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse webhook: %w", err)
+	}
+
+	// Translate provider event type to domain event type
+	var domainEventType payment.EventType
+	switch webhookEvent.EventType {
+	case "payment.completed":
+		domainEventType = payment.EventPaymentCompleted
+	case "payment.failed":
+		domainEventType = payment.EventPaymentFailed
+	case "payment.cancelled":
+		domainEventType = payment.EventPaymentCancelled
+	default:
+		// Default to completed if unknown
+		domainEventType = payment.EventPaymentCompleted
+	}
+
+	// Return domain PaymentEvent
+	return &payment.PaymentEvent{
+		Type:          domainEventType,
+		PaymentID:     webhookEvent.PaymentID,
+		TransactionID: webhookEvent.TransactionID,
+		Timestamp:     time.Now(),
+	}, nil
 }
