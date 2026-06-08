@@ -9,14 +9,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// responseWriterWrapper wraps http.ResponseWriter to capture the status code.
 type responseWriterWrapper struct {
 	http.ResponseWriter
 	statusCode int
 }
 
 func newResponseWriterWrapper(w http.ResponseWriter) *responseWriterWrapper {
-	return &responseWriterWrapper{w, http.StatusOK} // Default status code
+	return &responseWriterWrapper{w, http.StatusOK}
 }
 
 func (lrw *responseWriterWrapper) WriteHeader(code int) {
@@ -24,44 +23,38 @@ func (lrw *responseWriterWrapper) WriteHeader(code int) {
 	lrw.ResponseWriter.WriteHeader(code)
 }
 
-// limiterInfo holds a reference to an IPRateLimiter and its name.
 type limiterInfo struct {
 	name    string
 	limiter *IPRateLimiter
 }
 
-// UniqueIPsCollector collects metrics about unique IP addresses in rate limiters.
 type UniqueIPsCollector struct {
-	limiters    []limiterInfo // Slice of rate limiters to monitor
+	limiters    []limiterInfo
 	ipCountDesc *prometheus.Desc
 }
 
-// NewUniqueIPsCollector creates a new UniqueIPsCollector.
 func NewUniqueIPsCollector() *UniqueIPsCollector {
 	return &UniqueIPsCollector{
 		ipCountDesc: prometheus.NewDesc(
 			"rate_limiter_unique_ips_total",
 			"Total number of unique IP addresses currently tracked by the rate limiter.",
-			[]string{"limiter_name"}, // Label to distinguish different limiters (e.g., "api", "webhook")
+			[]string{"limiter_name"},
 			nil,
 		),
 	}
 }
 
-// AddLimiter adds an IPRateLimiter to the collector with a given name.
 func (c *UniqueIPsCollector) AddLimiter(limiter *IPRateLimiter, name string) {
 	c.limiters = append(c.limiters, limiterInfo{name: name, limiter: limiter})
 }
 
-// RequestMetrics holds Prometheus metrics for HTTP requests.
 type RequestMetrics struct {
-	requestsTotal   *prometheus.CounterVec
-	requestDuration *prometheus.HistogramVec
+	requestsTotal        *prometheus.CounterVec
+	requestDuration      *prometheus.HistogramVec
 	droppedRequestsTotal *prometheus.CounterVec
-	uniqueIPsCollector   *UniqueIPsCollector // Reference to the custom collector
+	uniqueIPsCollector   *UniqueIPsCollector
 }
 
-// NewRequestMetrics initializes and registers Prometheus metrics.
 func NewRequestMetrics() *RequestMetrics {
 	return &RequestMetrics{
 		requestsTotal: promauto.NewCounterVec(
@@ -75,7 +68,7 @@ func NewRequestMetrics() *RequestMetrics {
 			prometheus.HistogramOpts{
 				Name:    "http_request_duration_seconds",
 				Help:    "HTTP request latency in seconds.",
-				Buckets: prometheus.DefBuckets, // Default buckets: .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10
+				Buckets: prometheus.DefBuckets,
 			},
 			[]string{"method", "path", "status_code"},
 		),
@@ -89,8 +82,6 @@ func NewRequestMetrics() *RequestMetrics {
 	}
 }
 
-// MetricsMiddleware returns an http.Handler middleware that tracks request counts and latency.
-// It takes a 'pattern' string to ensure low-cardinality labels for dynamic routes.
 func (rm *RequestMetrics) MetricsMiddleware(pattern string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

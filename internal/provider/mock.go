@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 )
 
 // MockProvider is a no-op provider for development and testing.

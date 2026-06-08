@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/transport/http/middleware"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment" // Import domain payment

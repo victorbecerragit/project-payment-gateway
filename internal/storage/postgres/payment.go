@@ -12,16 +12,31 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 )
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+var migrationFilePattern = regexp.MustCompile(`^\d{3}_[a-z0-9_]+\.sql$`)
+
+var requiredPaymentColumns = []string{
+	"id",
+	"transaction_id",
+	"customer_id",
+	"amount",
+	"currency",
+	"status",
+	"idempotency_key",
+	"description",
+	"created_at",
+	"updated_at",
+}
 
 // ErrNotImplemented is returned by all stub methods until a real driver is added.
 var ErrNotImplemented = errors.New("postgres repository: not yet implemented")
@@ -29,14 +44,12 @@ var ErrNotImplemented = errors.New("postgres repository: not yet implemented")
 // repository is a placeholder that satisfies payment.Repository at compile time.
 // Replace the stub bodies with real pgx / database/sql calls.
 type repository struct {
-	// db *pgxpool.Pool  ← uncomment when wiring
 	db *pgxpool.Pool
-	tracer tracing.Tracer
 }
 
 // NewRepository creates a Postgres-backed payment repository.
 // dsn is a PostgreSQL connection string (e.g. "postgres://user:pass@host/db").
-func NewRepository(ctx context.Context, dsn string, tracer tracing.Tracer) payment.Repository {
+func NewRepository(ctx context.Context, dsn string, _ any) payment.Repository {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		slog.Error("unable to create connection pool", "error", err)
@@ -54,37 +67,94 @@ func NewRepository(ctx context.Context, dsn string, tracer tracing.Tracer) payme
 		os.Exit(1)
 	}
 
-	if tracer == nil {
-		tracer = tracing.NewNoOpTracer()
+	if err := verifySchemaReadiness(ctx, pool); err != nil {
+		slog.Error("database schema is not ready", "error", err)
+		os.Exit(1)
 	}
-	return &repository{db: pool, tracer: tracer}
+
+	return &repository{db: pool}
 }
 
 func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
-	// Simple migration runner that applies embedded SQL files in order.
-	// Since the SQL uses 'IF NOT EXISTS', direct execution is idempotent and safe for startup.
+	// Startup bootstrap only runs idempotent forward migrations embedded in the binary.
+	// CI should separately validate reversible up/down migrations before merge.
 	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("failed to read migrations directory: %w", err)
-		slogext.Ctx(ctx).Error("failed to read migrations directory", "error", err)
 	}
 
-	for _, entry := range entries {
-		ctx, span := tracing.CtxTracer(ctx).StartSpan(ctx, "db.runMigration")
-		defer span.End()
-		span.SetAttribute("migration.name", entry.Name())
+	migrationNames, err := validatedMigrationNames(entries)
+	if err != nil {
+		return err
+	}
 
-		content, err := migrationFS.ReadFile("migrations/" + entry.Name())
+	for _, name := range migrationNames {
+		content, err := migrationFS.ReadFile("migrations/" + name)
 		if err != nil {
-			return fmt.Errorf("failed to read migration file %s: %w", entry.Name(), err)
-			slogext.Ctx(ctx).Error("failed to read migration file", "file", entry.Name(), "error", err)
+			return fmt.Errorf("failed to read migration file %s: %w", name, err)
 		}
 
 		if _, err := pool.Exec(ctx, string(content)); err != nil {
-			return fmt.Errorf("failed to execute migration %s: %w", entry.Name(), err)
-			slogext.Ctx(ctx).Error("failed to execute migration", "file", entry.Name(), "error", err)
+			return fmt.Errorf("failed to execute migration %s: %w", name, err)
 		}
 	}
+	return nil
+}
+
+func validatedMigrationNames(entries []os.DirEntry) ([]string, error) {
+	if len(entries) == 0 {
+		return nil, errors.New("no migration files found")
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return nil, fmt.Errorf("unexpected migration subdirectory %q", entry.Name())
+		}
+		if !migrationFilePattern.MatchString(entry.Name()) {
+			return nil, fmt.Errorf("invalid migration filename %q: expected NNN_description.sql", entry.Name())
+		}
+		names = append(names, entry.Name())
+	}
+
+	sort.Strings(names)
+	for index := 1; index < len(names); index++ {
+		if names[index] == names[index-1] {
+			return nil, fmt.Errorf("duplicate migration filename %q", names[index])
+		}
+	}
+
+	return names, nil
+}
+
+func verifySchemaReadiness(ctx context.Context, pool *pgxpool.Pool) error {
+	var paymentsTableExists bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('public.payments') IS NOT NULL`).Scan(&paymentsTableExists); err != nil {
+		return fmt.Errorf("failed to verify payments table existence: %w", err)
+	}
+	if !paymentsTableExists {
+		return errors.New("payments table is missing after migrations")
+	}
+
+	for _, columnName := range requiredPaymentColumns {
+		var columnExists bool
+		query := `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = 'public'
+				  AND table_name = 'payments'
+				  AND column_name = $1
+			)
+		`
+		if err := pool.QueryRow(ctx, query, columnName).Scan(&columnExists); err != nil {
+			return fmt.Errorf("failed to verify payments.%s column existence: %w", columnName, err)
+		}
+		if !columnExists {
+			return fmt.Errorf("payments schema is missing required column %q", columnName)
+		}
+	}
+
 	return nil
 }
 
@@ -101,9 +171,6 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 			updated_at = EXCLUDED.updated_at;
 	`
 
-	ctx, span := r.tracer.StartSpan(ctx, "postgres.Save")
-	defer span.End()
-	span.SetAttribute("payment.id", p.ID)
 	// Convert domain float amount (dollars) to BIGINT (cents) for DB storage
 	amountCents := int64(p.Amount.Value() * 100)
 
@@ -121,41 +188,29 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 	)
 
 	if err != nil {
-		slogext.Ctx(ctx).Error("failed to save payment", "payment_id", p.ID, "error", err)
+		slog.Error("failed to save payment", "payment_id", p.ID, "error", err)
 		return fmt.Errorf("failed to save payment: %w", err)
 	}
 	return nil
 }
 
 func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, error) {
-	ctx, span := r.tracer.StartSpan(ctx, "postgres.GetByID")
-	defer span.End()
-	span.SetAttribute("payment.id", id)
-
 	query := fmt.Sprintf("SELECT %s FROM payments WHERE id = $1", paymentFields)
 	return r.scanRow(r.db.QueryRow(ctx, query, id))
 }
 
 func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*payment.Payment, error) {
-	ctx, span := r.tracer.StartSpan(ctx, "postgres.GetByIdempotencyKey")
-	defer span.End()
-	span.SetAttribute("idempotency.key", key)
-
 	query := fmt.Sprintf("SELECT %s FROM payments WHERE idempotency_key = $1", paymentFields)
 	p, err := r.scanRow(r.db.QueryRow(ctx, query, key))
-	if p != nil { span.SetAttribute("payment.id", p.ID) }
+	if errors.Is(err, payment.ErrPaymentNotFound) {
+		return nil, nil
+	}
 	return p, err
 }
 
 func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (*payment.Payment, error) {
-	ctx, span := r.tracer.StartSpan(ctx, "postgres.GetByProviderRef")
-	defer span.End()
-	span.SetAttribute("provider.ref", providerRef)
-
 	query := fmt.Sprintf("SELECT %s FROM payments WHERE transaction_id = $1", paymentFields)
-	p, err := r.scanRow(r.db.QueryRow(ctx, query, providerRef))
-	if p != nil { span.SetAttribute("payment.id", p.ID) }
-	return p, err
+	return r.scanRow(r.db.QueryRow(ctx, query, providerRef))
 }
 
 // scanRow is a helper to map a database row back into a domain Payment entity.
@@ -185,7 +240,6 @@ func (r *repository) scanRow(row pgx.Row) (*payment.Payment, error) {
 	)
 
 	if err != nil {
-		slogext.Ctx(context.Background()).Debug("error scanning row", "error", err) // Use context.Background() as ctx might not have logger
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, payment.ErrPaymentNotFound
 		}
@@ -214,6 +268,6 @@ func nullString(s string) *string {
 func (r *repository) Close() {
 	if r.db != nil {
 		r.db.Close()
-		slogext.Ctx(context.Background()).Info("postgres connection pool closed")
+		slog.Info("postgres connection pool closed")
 	}
 }

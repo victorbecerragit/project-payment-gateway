@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 )
 

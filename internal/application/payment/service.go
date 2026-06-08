@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
-	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/id"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
