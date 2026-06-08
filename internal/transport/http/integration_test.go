@@ -10,7 +10,6 @@ import (
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 
-	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
@@ -20,6 +19,7 @@ import (
 	gatewayhttp "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/dto"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/handlers"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 )
 
 // TestPaymentFlow_Integration performs a full payment lifecycle integration test.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
-	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/handlers"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 	"golang.org/x/time/rate"
 )
 

@@ -10,13 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
-	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
-	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment" // Import domain payment
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider/stripe"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider/webhook"
@@ -24,6 +23,7 @@ import (
 	"github.com/victorbecerragit/project-payment-gateway/internal/storage/postgres"
 	transport "github.com/victorbecerragit/project-payment-gateway/internal/transport/http"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/handlers"
+	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/middleware"
 )
 
 func main() {
