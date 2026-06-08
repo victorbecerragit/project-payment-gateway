@@ -15,22 +15,34 @@ type Config struct {
 	DatabaseURL         string
 	StripeAPIKey        string
 	StripeWebhookSecret string
+	APIRateLimit        float64
+	APIBurst            int
+	WebhookRateLimit    float64
+	WebhookBurst        int
 }
 
 // Load loads the configuration from environment variables
 func Load() (*Config, error) {
+	// Load .env file if it exists. This will not override existing environment variables.
+	_ = godotenv.Load() // Ignore error if .env file doesn't exist
+
 	currenciesStr := getEnv("SUPPORTED_CURRENCIES", "USD,EUR,GBP")
 	supportedCurrencies := strings.Split(currenciesStr, ",")
 	for i, curr := range supportedCurrencies {
 		supportedCurrencies[i] = strings.TrimSpace(strings.ToUpper(curr))
 	}
-	return &Config{
+
+	cfg := &Config{
 		Port:                getEnv("PORT", "8080"),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
 		SupportedCurrencies: supportedCurrencies,
 		DatabaseURL:         getEnv("DATABASE_URL", ""),
 		StripeAPIKey:        getEnv("STRIPE_API_KEY", ""),
 		StripeWebhookSecret: getEnv("STRIPE_WEBHOOK_SECRET", ""),
+		APIRateLimit:        getEnvFloat("API_RATE_LIMIT", 10.0),
+		APIBurst:            getEnvInt("API_BURST", 20),
+		WebhookRateLimit:    getEnvFloat("WEBHOOK_RATE_LIMIT", 50.0),
+		WebhookBurst:        getEnvInt("WEBHOOK_BURST", 100),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -64,12 +76,46 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("Stripe integration requires both STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET")
 	}
 
+	// Validate Rate Limiting settings
+	if c.APIRateLimit <= 0 {
+		return fmt.Errorf("API_RATE_LIMIT must be a positive number")
+	}
+	if c.APIBurst <= 0 {
+		return fmt.Errorf("API_BURST must be a positive integer")
+	}
+	if c.WebhookRateLimit <= 0 {
+		return fmt.Errorf("WEBHOOK_RATE_LIMIT must be a positive number")
+	}
+	if c.WebhookBurst <= 0 {
+		return fmt.Errorf("WEBHOOK_BURST must be a positive integer")
+	}
+
 	return nil
 }
 
 func getEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
+	}
+	return fallback
+}
+
+// getEnvInt parses an environment variable as an integer, returning a fallback if not found or invalid.
+func getEnvInt(key string, fallback int) int {
+	if valueStr, exists := os.LookupEnv(key); exists {
+		if value, err := strconv.Atoi(valueStr); err == nil {
+			return value
+		}
+	}
+	return fallback
+}
+
+// getEnvFloat parses an environment variable as a float64, returning a fallback if not found or invalid.
+func getEnvFloat(key string, fallback float64) float64 {
+	if valueStr, exists := os.LookupEnv(key); exists {
+		if value, err := strconv.ParseFloat(valueStr, 64); err == nil {
+			return value
+		}
 	}
 	return fallback
 }

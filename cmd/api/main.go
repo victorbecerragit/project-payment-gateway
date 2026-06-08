@@ -89,12 +89,14 @@ func main() {
 	paymentHandler := handlers.NewPaymentHandler(paymentService, webhookVerifier)
 
 	// Initialize Prometheus metrics
-	requestMetrics := middleware.NewRequestMetrics()
+	requestMetrics := middleware.NewRequestMetrics() // This doesn't need a context for its own initialization
 
-	// Setup routes using the new router
-	// The router itself will be wrapped by the correlation ID middleware
+	// Create a context for rate limiters that will be cancelled on shutdown
+	rateLimiterCtx, rateLimiterCancel := context.WithCancel(context.Background())
+	defer rateLimiterCancel() // Ensure this is called when main exits
+	// Setup routes using the new router, which will be wrapped by the correlation ID middleware
 	routerMux := http.NewServeMux()
-	transport.SetupRoutes(routerMux, paymentHandler, healthHandler, requestMetrics)
+	transport.SetupRoutes(routerMux, paymentHandler, healthHandler, requestMetrics, cfg, rateLimiterCtx)
 
 	// Apply CorrelationIDMiddleware to the entire router
 	finalHandler := middleware.CorrelationIDMiddleware(appTracer, routerMux)
@@ -129,6 +131,7 @@ func main() {
 	}
 
 	slogext.Ctx(context.Background()).Info("closing repository...")
+	// The repository's Close method will handle its own context for draining connections
 	paymentRepo.Close()
 
 	slogext.Ctx(context.Background()).Info("server exited gracefully")

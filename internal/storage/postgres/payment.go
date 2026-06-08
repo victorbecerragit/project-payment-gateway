@@ -31,11 +31,12 @@ var ErrNotImplemented = errors.New("postgres repository: not yet implemented")
 type repository struct {
 	// db *pgxpool.Pool  ← uncomment when wiring
 	db *pgxpool.Pool
+	tracer tracing.Tracer
 }
 
 // NewRepository creates a Postgres-backed payment repository.
 // dsn is a PostgreSQL connection string (e.g. "postgres://user:pass@host/db").
-func NewRepository(ctx context.Context, dsn string) payment.Repository {
+func NewRepository(ctx context.Context, dsn string, tracer tracing.Tracer) payment.Repository {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		slog.Error("unable to create connection pool", "error", err)
@@ -53,7 +54,10 @@ func NewRepository(ctx context.Context, dsn string) payment.Repository {
 		os.Exit(1)
 	}
 
-	return &repository{db: pool}
+	if tracer == nil {
+		tracer = tracing.NewNoOpTracer()
+	}
+	return &repository{db: pool, tracer: tracer}
 }
 
 func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
@@ -181,7 +185,7 @@ func (r *repository) scanRow(row pgx.Row) (*payment.Payment, error) {
 	)
 
 	if err != nil {
-		slogext.Ctx(ctx).Debug("error scanning row", "error", err)
+		slogext.Ctx(context.Background()).Debug("error scanning row", "error", err) // Use context.Background() as ctx might not have logger
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, payment.ErrPaymentNotFound
 		}

@@ -30,6 +30,10 @@ services:
       - DATABASE_URL=postgres://user:pass@db:5432/payment_gateway?sslmode=disable
       - STRIPE_API_KEY=${STRIPE_API_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - API_RATE_LIMIT=${API_RATE_LIMIT:-10.0}
+      - API_BURST=${API_BURST:-20}
+      - WEBHOOK_RATE_LIMIT=${WEBHOOK_RATE_LIMIT:-50.0}
+      - WEBHOOK_BURST=${WEBHOOK_BURST:-100}
     depends_on:
       db:
         condition: service_healthy
