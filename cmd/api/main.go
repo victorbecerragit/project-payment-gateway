@@ -24,7 +24,13 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+
+	// Fail fast on invalid configuration
+	if err != nil {
+		slog.Error("configuration error", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize structured logger
 	var level slog.Level
