@@ -58,6 +58,7 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 
 	// Call provider to create payment with provider (e.g., Stripe, PayPal)
 	providerReq := &provider.CreatePaymentRequest{
+		PaymentID:      p.ID,
 		Amount:         int64(p.Amount.Value() * 100), // Convert to cents
 		Currency:       string(p.Currency),
 		Description:    p.Description,

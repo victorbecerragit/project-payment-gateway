@@ -20,6 +20,9 @@ type Provider interface {
 
 // CreatePaymentRequest encapsulates provider-specific payment creation parameters.
 type CreatePaymentRequest struct {
+	// PaymentID from the domain
+	PaymentID string
+
 	// Amount in the smallest currency unit (e.g., cents for USD)
 	Amount int64
 
