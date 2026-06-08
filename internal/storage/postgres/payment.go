@@ -10,7 +10,8 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,16 +36,19 @@ type repository struct {
 func NewRepository(ctx context.Context, dsn string) payment.Repository {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		log.Fatalf("unable to create connection pool: %v", err)
+		slog.Error("unable to create connection pool", "error", err)
+		os.Exit(1)
 	}
 
 	// Verify connectivity
 	if err := pool.Ping(ctx); err != nil {
-		log.Fatalf("unable to connect to database: %v", err)
+		slog.Error("unable to connect to database", "error", err)
+		os.Exit(1)
 	}
 
 	if err := runMigrations(ctx, pool); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+		slog.Error("failed to run migrations", "error", err)
+		os.Exit(1)
 	}
 
 	return &repository{db: pool}

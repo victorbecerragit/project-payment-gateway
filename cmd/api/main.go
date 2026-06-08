@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,21 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Initialize structured logger
+	var level slog.Level
+	switch strings.ToLower(cfg.LogLevel) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	slog.SetDefault(logger)
+
 	// Initialize domain-level configurations
 	payment.SetSupportedCurrencies(cfg.SupportedCurrencies)
 
@@ -32,10 +48,10 @@ func main() {
 	var paymentRepo payment.Repository
 	if cfg.DatabaseURL != "" {
 		paymentRepo = postgres.NewRepository(context.Background(), cfg.DatabaseURL)
-		log.Println("Using Postgres repository")
+		slog.Info("using postgres repository", "type", "postgres")
 	} else {
 		paymentRepo = inmemory.NewRepository()
-		log.Println("Using in-memory repository")
+		slog.Info("using in-memory repository", "type", "inmemory")
 	}
 
 	// Initialize Provider based on configuration flag
@@ -45,10 +61,10 @@ func main() {
 			APIKey:        cfg.StripeAPIKey,
 			WebhookSecret: cfg.StripeWebhookSecret,
 		})
-		log.Println("Using Stripe payment provider")
+		slog.Info("using stripe payment provider", "provider", "stripe")
 	} else {
 		paymentProvider = provider.NewMockProvider()
-		log.Println("Using mock payment provider")
+		slog.Info("using mock payment provider", "provider", "mock")
 	}
 
 	// Initialize Services
@@ -72,27 +88,30 @@ func main() {
 
 	// Run server in a goroutine
 	go func() {
-		log.Printf("Starting payment gateway server on port %s", cfg.Port)
+		slog.Info("starting payment gateway server", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed to start: %v", err)
+			slog.Error("server failed to start", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	sig := <-quit
+	slog.Info("received shutdown signal", "signal", sig.String())
 
-	log.Println("Shutting down server...")
+	slog.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("server forced to shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Closing repository...")
+	slog.Info("closing repository...")
 	paymentRepo.Close()
 
-	log.Println("Server exited gracefully")
+	slog.Info("server exited gracefully")
 }
