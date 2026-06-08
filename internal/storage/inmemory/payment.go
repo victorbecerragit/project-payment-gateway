@@ -47,3 +47,14 @@ func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*paym
 	}
 	return nil, nil
 }
+
+func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (*payment.Payment, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.payments {
+		if p.TransactionID == providerRef {
+			return p, nil
+		}
+	}
+	return nil, payment.ErrPaymentNotFound
+}

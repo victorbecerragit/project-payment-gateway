@@ -83,8 +83,14 @@ func (s *service) GetPayment(ctx context.Context, paymentID string) (*payment.Pa
 
 func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) error {
 	p, err := s.repo.GetByID(ctx, e.PaymentID)
+	if err != nil && e.TransactionID != "" {
+		// Fallback: provider webhook may not carry metadata.payment_id
+		// (e.g. Stripe Dashboard retry or metadata stripped by a provider update).
+		// Attempt lookup by provider reference stored in TransactionID.
+		p, err = s.repo.GetByProviderRef(ctx, e.TransactionID)
+	}
 	if err != nil {
-		return err
+		return fmt.Errorf("payment not found by id %q or provider ref %q: %w", e.PaymentID, e.TransactionID, err)
 	}
 
 	var nextStatus payment.Status
