@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
@@ -26,7 +31,7 @@ func main() {
 	// Initialize Repositories
 	var paymentRepo payment.Repository
 	if cfg.DatabaseURL != "" {
-		paymentRepo = postgres.NewRepository(cfg.DatabaseURL)
+		paymentRepo = postgres.NewRepository(context.Background(), cfg.DatabaseURL)
 		log.Println("Using Postgres repository")
 	} else {
 		paymentRepo = inmemory.NewRepository()
@@ -60,8 +65,34 @@ func main() {
 	// Setup routes using the new router
 	transport.SetupRoutes(mux, paymentHandler, healthHandler)
 
-	log.Printf("Starting payment gateway server on port %s", cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: mux,
 	}
+
+	// Run server in a goroutine
+	go func() {
+		log.Printf("Starting payment gateway server on port %s", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Closing repository...")
+	paymentRepo.Close()
+
+	log.Println("Server exited gracefully")
 }

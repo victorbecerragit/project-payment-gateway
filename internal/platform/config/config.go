@@ -7,9 +7,12 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	Port     string
-	LogLevel string
+	Port                string
+	LogLevel            string
 	SupportedCurrencies []string
+	DatabaseURL         string
+	StripeAPIKey        string
+	StripeWebhookSecret string
 }
 
 // Load loads the configuration from environment variables
@@ -20,9 +23,12 @@ func Load() *Config {
 		supportedCurrencies[i] = strings.TrimSpace(strings.ToUpper(curr))
 	}
 	return &Config{
-		Port:     getEnv("PORT", "8080"),
-		LogLevel: getEnv("LOG_LEVEL", "info"),
+		Port:                getEnv("PORT", "8080"),
+		LogLevel:            getEnv("LOG_LEVEL", "info"),
 		SupportedCurrencies: supportedCurrencies,
+		DatabaseURL:         getEnv("DATABASE_URL", ""),
+		StripeAPIKey:        getEnv("STRIPE_API_KEY", ""),
+		StripeWebhookSecret: getEnv("STRIPE_WEBHOOK_SECRET", ""),
 	}
 }
 

@@ -58,3 +58,7 @@ func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (
 	}
 	return nil, payment.ErrPaymentNotFound
 }
+
+func (r *repository) Close() {
+	// No-op for in-memory repository
+}
