@@ -1,4 +1,3 @@
-package postgres
 // Package postgres provides a PostgreSQL-backed implementation of payment.Repository.
 //
 // Status: STUB — not wired into the application.

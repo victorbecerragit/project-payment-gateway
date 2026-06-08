@@ -229,3 +229,192 @@ func TestProcessEvent_CancelsPaymentFromPending(t *testing.T) {
 		t.Fatalf("expected cancelled; got %s", got.Status)
 	}
 }
+
+// setupPayment is a test helper that creates and saves a payment, then optionally
+// advances it to a given status via ProcessEvent to reduce boilerplate.
+// It uses t.Name() as the idempotency key so each subtest gets a distinct payment.
+func setupPayment(t *testing.T, svc apppayment.Service, repo payment.Repository, advanceTo payment.Status) *payment.Payment {
+	t.Helper()
+	ctx := context.Background()
+	p := &payment.Payment{
+		Amount:         payment.MustNewAmount(10.0),
+		Currency:       payment.Currency("USD"),
+		CustomerID:     payment.MustNewCustomerID("cust_setup"),
+		Description:    "setup payment",
+		IdempotencyKey: "setup-" + t.Name(),
+	}
+	if err := svc.CreatePayment(ctx, p); err != nil {
+		t.Fatalf("setupPayment: create failed: %v", err)
+	}
+	if advanceTo == payment.StatusPending {
+		return p
+	}
+	// Advance to processing unconditionally first.
+	switch advanceTo {
+	case payment.StatusCompleted:
+		ev := &payment.PaymentEvent{Type: payment.EventPaymentCompleted, PaymentID: p.ID, TransactionID: "tx-setup"}
+		if err := svc.ProcessEvent(ctx, ev); err != nil {
+			t.Fatalf("setupPayment: advance to completed failed: %v", err)
+		}
+	case payment.StatusFailed:
+		ev := &payment.PaymentEvent{Type: payment.EventPaymentFailed, PaymentID: p.ID, TransactionID: "tx-setup"}
+		if err := svc.ProcessEvent(ctx, ev); err != nil {
+			t.Fatalf("setupPayment: advance to failed failed: %v", err)
+		}
+	case payment.StatusCancelled:
+		ev := &payment.PaymentEvent{Type: payment.EventPaymentCancelled, PaymentID: p.ID, TransactionID: "tx-setup"}
+		if err := svc.ProcessEvent(ctx, ev); err != nil {
+			t.Fatalf("setupPayment: advance to cancelled failed: %v", err)
+		}
+	case payment.StatusProcessing:
+		// ProcessEvent does not expose a "processing" target event; use direct repo Save.
+		fetched, _ := repo.GetByID(ctx, p.ID)
+		_ = fetched.Transition(payment.StatusProcessing)
+		_ = repo.Save(ctx, fetched)
+	}
+	got, _ := repo.GetByID(ctx, p.ID)
+	return got
+}
+
+func newSvc(t *testing.T) (apppayment.Service, payment.Repository) {
+	t.Helper()
+	payment.SetSupportedCurrencies([]string{"USD"})
+	repo := inmemory.NewRepository()
+	return apppayment.NewService(repo, provider.NewMockProvider()), repo
+}
+
+// TestProcessEvent_TerminalSameEvent verifies that a duplicate terminal webhook is
+// a safe no-op (idempotent delivery).
+func TestProcessEvent_TerminalSameEvent(t *testing.T) {
+	svc, repo := newSvc(t)
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name   payment.Status
+		evType payment.EventType
+	}{
+		{payment.StatusCompleted, payment.EventPaymentCompleted},
+		{payment.StatusFailed, payment.EventPaymentFailed},
+		{payment.StatusCancelled, payment.EventPaymentCancelled},
+	} {
+		t.Run(string(tc.name), func(t *testing.T) {
+			p := setupPayment(t, svc, repo, tc.name)
+			ev := &payment.PaymentEvent{Type: tc.evType, PaymentID: p.ID, TransactionID: "tx-dup"}
+			if err := svc.ProcessEvent(ctx, ev); err != nil {
+				t.Fatalf("duplicate terminal event must be a no-op, got error: %v", err)
+			}
+			got, _ := svc.GetPayment(ctx, p.ID)
+			if got.Status != tc.name {
+				t.Fatalf("status changed unexpectedly: want %s, got %s", tc.name, got.Status)
+			}
+		})
+	}
+}
+
+// TestProcessEvent_TerminalDifferentEvent verifies that the domain state machine
+// rejects an event that would cause an illegal transition from a terminal state.
+// e.g. a "completed" payment must not become "failed" on a subsequent webhook.
+func TestProcessEvent_TerminalDifferentEvent(t *testing.T) {
+	svc, repo := newSvc(t)
+	ctx := context.Background()
+
+	cases := []struct {
+		name      string
+		startAt   payment.Status
+		incomingEv payment.EventType
+	}{
+		{"completed→failed", payment.StatusCompleted, payment.EventPaymentFailed},
+		{"completed→cancelled", payment.StatusCompleted, payment.EventPaymentCancelled},
+		{"failed→completed", payment.StatusFailed, payment.EventPaymentCompleted},
+		{"failed→cancelled", payment.StatusFailed, payment.EventPaymentCancelled},
+		{"cancelled→completed", payment.StatusCancelled, payment.EventPaymentCompleted},
+		{"cancelled→failed", payment.StatusCancelled, payment.EventPaymentFailed},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := setupPayment(t, svc, repo, tc.startAt)
+			ev := &payment.PaymentEvent{Type: tc.incomingEv, PaymentID: p.ID, TransactionID: "tx-illegal"}
+			err := svc.ProcessEvent(ctx, ev)
+			if err == nil {
+				t.Fatalf("expected state machine error for %s, got nil", tc.name)
+			}
+			// Status must be unchanged.
+			got, _ := svc.GetPayment(ctx, p.ID)
+			if got.Status != tc.startAt {
+				t.Fatalf("status mutated despite error: want %s, got %s", tc.startAt, got.Status)
+			}
+		})
+	}
+}
+
+// TestProcessEvent_ProcessingReceivesTerminalEvent verifies that a payment already
+// in the "processing" state can move directly to a terminal state without the
+// pending→processing bridge (the bridge is only for pending payments).
+func TestProcessEvent_ProcessingReceivesTerminalEvent(t *testing.T) {
+	svc, repo := newSvc(t)
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		evType  payment.EventType
+		wantStatus payment.Status
+	}{
+		{payment.EventPaymentCompleted, payment.StatusCompleted},
+		{payment.EventPaymentFailed, payment.StatusFailed},
+		{payment.EventPaymentCancelled, payment.StatusCancelled},
+	} {
+		t.Run(string(tc.wantStatus), func(t *testing.T) {
+			p := setupPayment(t, svc, repo, payment.StatusProcessing)
+			ev := &payment.PaymentEvent{Type: tc.evType, PaymentID: p.ID, TransactionID: "tx-from-proc"}
+			if err := svc.ProcessEvent(ctx, ev); err != nil {
+				t.Fatalf("processing→%s must succeed, got error: %v", tc.wantStatus, err)
+			}
+			got, _ := svc.GetPayment(ctx, p.ID)
+			if got.Status != tc.wantStatus {
+				t.Fatalf("want %s, got %s", tc.wantStatus, got.Status)
+			}
+		})
+	}
+}
+
+// TestProcessEvent_FallbackByProviderRef verifies that ProcessEvent can resolve a
+// payment using TransactionID when PaymentID is missing from the webhook event.
+// This covers the Stripe Dashboard retry path where metadata is absent.
+func TestProcessEvent_FallbackByProviderRef(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+
+	p := &payment.Payment{
+		Amount:         payment.MustNewAmount(25.0),
+		Currency:       payment.Currency("USD"),
+		CustomerID:     payment.MustNewCustomerID("cust_provref"),
+		Description:    "provider-ref fallback test",
+		IdempotencyKey: "idem-provref",
+	}
+	if err := svc.CreatePayment(ctx, p); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	// The payment now has p.TransactionID set by the mock provider.
+	providerRef := p.TransactionID
+	if providerRef == "" {
+		t.Fatal("expected mock provider to set a TransactionID")
+	}
+
+	// Simulate a webhook that carries only the provider reference, not our internal ID.
+	ev := &payment.PaymentEvent{
+		Type:          payment.EventPaymentCompleted,
+		PaymentID:     "", // absent — simulates missing metadata
+		TransactionID: providerRef,
+	}
+	if err := svc.ProcessEvent(ctx, ev); err != nil {
+		t.Fatalf("fallback by provider ref failed: %v", err)
+	}
+
+	got, err := svc.GetPayment(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("get payment failed: %v", err)
+	}
+	if got.Status != payment.StatusCompleted {
+		t.Fatalf("expected completed; got %s", got.Status)
+	}
+}

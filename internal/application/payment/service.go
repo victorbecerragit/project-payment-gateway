@@ -136,7 +136,9 @@ func (s *service) ParseWebhook(ctx context.Context, payload []byte, signature st
 		return nil, fmt.Errorf("failed to parse webhook: %w", err)
 	}
 
-	// Translate provider event type to domain event type
+	// Translate provider event type to domain event type.
+	// Unrecognized event types are rejected explicitly — silently defaulting to
+	// "completed" risks incorrectly advancing the payment state machine.
 	var domainEventType payment.EventType
 	switch webhookEvent.EventType {
 	case "payment.completed":
@@ -146,8 +148,7 @@ func (s *service) ParseWebhook(ctx context.Context, payload []byte, signature st
 	case "payment.cancelled":
 		domainEventType = payment.EventPaymentCancelled
 	default:
-		// Default to completed if unknown
-		domainEventType = payment.EventPaymentCompleted
+		return nil, fmt.Errorf("unrecognized provider event type %q: no domain mapping defined", webhookEvent.EventType)
 	}
 
 	// Return domain PaymentEvent
