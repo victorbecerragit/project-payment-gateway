@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 )
 
@@ -76,6 +77,9 @@ func VerifySignature(payload []byte, signatureHeader string, secret string) erro
 // ParseWebhook decodes the Stripe-specific event payload, verifies the signature if WebhookSecret is set,
 // maps raw statuses to standardized ones, and extracts tracking identifiers for generic routing.
 func (p *StripeProvider) ParseWebhook(ctx context.Context, payload []byte, signature string) (*provider.WebhookEvent, error) {
+	ctx, span := p.tracer.StartSpan(ctx, "stripe.ParseWebhook")
+	defer span.End()
+
 	if len(payload) == 0 {
 		return nil, &provider.ErrProviderError{
 			Provider: p.Name(),
@@ -87,6 +91,7 @@ func (p *StripeProvider) ParseWebhook(ctx context.Context, payload []byte, signa
 	// Optional signature verification check
 	if p.config.WebhookSecret != "" {
 		if err := VerifySignature(payload, signature, p.config.WebhookSecret); err != nil {
+			slogext.Ctx(ctx).Warn("stripe webhook signature verification failed", "error", err)
 			return nil, &provider.ErrProviderError{
 				Provider: p.Name(),
 				Message:  fmt.Sprintf("webhook signature verification failed: %v", err),
@@ -94,6 +99,7 @@ func (p *StripeProvider) ParseWebhook(ctx context.Context, payload []byte, signa
 			}
 		}
 	}
+	span.SetAttribute("webhook.signature_verified", true)
 
 	var stripeEvent struct {
 		ID   string `json:"id"`
@@ -109,6 +115,7 @@ func (p *StripeProvider) ParseWebhook(ctx context.Context, payload []byte, signa
 	}
 
 	if err := json.Unmarshal(payload, &stripeEvent); err != nil {
+		slogext.Ctx(ctx).Error("failed to unmarshal stripe webhook payload", "error", err, "payload", string(payload))
 		return nil, &provider.ErrProviderError{
 			Provider: p.Name(),
 			Message:  fmt.Sprintf("failed to parse stripe event payload: %v", err),
@@ -116,10 +123,14 @@ func (p *StripeProvider) ParseWebhook(ctx context.Context, payload []byte, signa
 		}
 	}
 
+	span.SetAttribute("stripe.event_id", stripeEvent.ID)
+	span.SetAttribute("stripe.event_type", stripeEvent.Type)
+	span.SetAttribute("stripe.object_id", stripeEvent.Data.Object.ID)
+
 	// Extract stored internal payment identifiers
 	paymentID, _ := stripeEvent.Data.Object.Metadata["payment_id"].(string)
 	if paymentID == "" {
-		// Fallback to idempotency key as secondary source if payment_id is absent
+		// Fallback to idempotency key as secondary source if payment_id is absent in metadata
 		paymentID, _ = stripeEvent.Data.Object.Metadata["idempotency_key"].(string)
 	}
 
@@ -131,6 +142,9 @@ func (p *StripeProvider) ParseWebhook(ctx context.Context, payload []byte, signa
 		"stripe_event_type":     stripeEvent.Type,
 		"stripe_payment_status": stripeEvent.Data.Object.Status,
 	}
+
+	span.SetAttribute("payment.id", paymentID)
+	span.SetAttribute("transaction.id", stripeEvent.Data.Object.ID)
 
 	return &provider.WebhookEvent{
 		PaymentID:         paymentID,

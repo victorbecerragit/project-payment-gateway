@@ -1,14 +1,23 @@
 package provider
 
-import "context"
+import (
+	"context"
+
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
+)
 
 // MockProvider is a no-op provider for development and testing.
 // It accepts any payment request and returns a synthetic TransactionID.
-type MockProvider struct{}
+type MockProvider struct {
+	tracer tracing.Tracer
+}
 
 // NewMockProvider creates a new MockProvider instance.
-func NewMockProvider() *MockProvider {
-	return &MockProvider{}
+func NewMockProvider(tracer tracing.Tracer) *MockProvider {
+	if tracer == nil {
+		tracer = tracing.NewNoOpTracer()
+	}
+	return &MockProvider{tracer: tracer}
 }
 
 // CreatePayment simulates a successful payment creation without calling any external service.
@@ -21,6 +30,9 @@ func (m *MockProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequ
 		}
 	}
 
+	ctx, span := m.tracer.StartSpan(ctx, "mock.CreatePayment")
+	defer span.End()
+
 	// Generate a synthetic transaction ID (in real provider, this comes from the provider)
 	txnID := "txn_mock_" + req.IdempotencyKey
 
@@ -31,6 +43,9 @@ func (m *MockProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequ
 			"provider":          "mock",
 			"idempotency_key":   req.IdempotencyKey,
 		},
+	}
+	span.SetAttribute("payment.id", req.PaymentID)
+	span.SetAttribute("provider.transaction_id", txnID)
 	}, nil
 }
 
@@ -44,6 +59,9 @@ func (m *MockProvider) ParseWebhook(ctx context.Context, payload []byte, signatu
 		}
 	}
 
+	ctx, span := m.tracer.StartSpan(ctx, "mock.ParseWebhook")
+	defer span.End()
+
 	// In a real provider, unmarshal provider-specific payload here and verify signature
 	// For now, just acknowledge the webhook
 	return &WebhookEvent{
@@ -53,6 +71,8 @@ func (m *MockProvider) ParseWebhook(ctx context.Context, payload []byte, signatu
 		ProviderData: map[string]interface{}{
 			"provider": "mock",
 			"payload_size": len(payload),
+			"webhook.signature", signature,
+			"webhook.payload", string(payload),
 		},
 	}, nil
 }

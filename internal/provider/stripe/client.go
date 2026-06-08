@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 )
 
@@ -24,21 +26,27 @@ type Config struct {
 // StripeProvider implements payment provider interaction for Stripe.
 type StripeProvider struct {
 	config Config
-	client *http.Client
+	client *http.Client // HTTP client for making requests to Stripe API
+	tracer tracing.Tracer
 }
 
 // NewStripeProvider creates a new StripeProvider adapter instance.
-func NewStripeProvider(config Config) *StripeProvider {
+func NewStripeProvider(config Config, tracer tracing.Tracer) *StripeProvider {
 	if config.BaseURL == "" {
 		config.BaseURL = "https://api.stripe.com"
+	}
+	if tracer == nil {
+		tracer = tracing.NewNoOpTracer()
 	}
 	return &StripeProvider{
 		config: config,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		tracer: tracer,
 	}
 }
+
 
 // Name returns the provider identifier.
 func (p *StripeProvider) Name() string {
@@ -55,6 +63,9 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 			Code:     "invalid_request",
 		}
 	}
+
+	ctx, span := p.tracer.StartSpan(ctx, "stripe.CreatePayment")
+	defer span.End()
 
 	endpoint := fmt.Sprintf("%s/v1/payment_intents", p.config.BaseURL)
 
@@ -77,6 +88,11 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 	// Standard confirm flow for simple Card API integrations
 	form.Set("confirm", "true")
 	form.Set("payment_method_types[]", "card")
+
+	span.SetAttribute("payment.id", req.PaymentID)
+	span.SetAttribute("amount", req.Amount)
+	span.SetAttribute("currency", req.Currency)
+	span.SetAttribute("idempotency_key", req.IdempotencyKey)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -111,6 +127,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 			Code:     "read_error",
 		}
 	}
+	slogext.Ctx(ctx).Debug("stripe API response", "status_code", resp.StatusCode, "body", string(bodyBytes))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var stripeErr struct {
@@ -127,6 +144,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 		}
 		return nil, &provider.ErrProviderError{
 			Provider: p.Name(),
+			Code:     stripeErr.Error.Code,
 			Message:  msg,
 			Code:     stripeErr.Error.Code,
 		}
@@ -149,6 +167,8 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 		}
 	}
 
+	span.SetAttribute("provider.payment_intent_id", paymentIntent.ID)
+	span.SetAttribute("provider.status", paymentIntent.Status)
 	providerData := map[string]interface{}{
 		"provider":      "stripe",
 		"payment_intent": paymentIntent.ID,

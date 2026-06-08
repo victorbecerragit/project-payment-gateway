@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -17,6 +18,7 @@ func NewHealthHandler(s apphealth.Service) *HealthHandler {
 }
 
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
+	slog.Ctx(r.Context()).Debug("health check requested")
 	status := "unhealthy"
 	statusCode := http.StatusOK
 	if h.service.Health() {
@@ -32,6 +34,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
+	slog.Ctx(r.Context()).Debug("readiness check requested")
 	status := "unhealthy"
 	statusCode := http.StatusOK
 	if h.service.Ready() {

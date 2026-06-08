@@ -8,20 +8,6 @@ import (
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/handlers"
 )
 
-type Router struct {
-	paymentHandler *handlers.PaymentHandler
-	healthHandler  *handlers.HealthHandler
-	metrics        *middleware.RequestMetrics
-}
-
-func NewRouter(p *handlers.PaymentHandler, h *handlers.HealthHandler, m *middleware.RequestMetrics) *Router {
-	return &Router{
-		paymentHandler: p,
-		healthHandler:  h,
-		metrics:        m,
-	}
-}
-
 // SetupRoutes registers all application routes to the provided mux
 func SetupRoutes(mux *http.ServeMux, p *handlers.PaymentHandler, h *handlers.HealthHandler, m *middleware.RequestMetrics) {
 	// Health routes
@@ -35,10 +21,4 @@ func SetupRoutes(mux *http.ServeMux, p *handlers.PaymentHandler, h *handlers.Hea
 
 	// Prometheus metrics endpoint
 	mux.Handle("GET /metrics", promhttp.Handler())
-}
-
-func (r *Router) Handler() http.Handler {
-	mux := http.NewServeMux() // Create a new mux for the Handler method
-	SetupRoutes(mux, r.paymentHandler, r.healthHandler, r.metrics)
-	return mux // Return the mux with routes and middleware applied
 }

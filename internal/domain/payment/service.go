@@ -24,6 +24,6 @@ type Repository interface {
 	// (e.g. Stripe PaymentIntent ID stored in TransactionID). Used as a
 	// fallback when a webhook does not carry the internal payment ID in metadata.
 	GetByProviderRef(ctx context.Context, providerRef string) (*Payment, error)
-	// Close releases any resources held by the repository (e.g. database connections).
+	// No SetLogger needed, use slogext.Ctx(ctx)
 	Close()
 }

@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
+
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/transport/http/middleware"
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
@@ -25,10 +28,12 @@ import (
 func TestPaymentFlow_Integration(t *testing.T) {
 	// 1. Setup dependencies and router
 	repo := inmemory.NewRepository()
-	paymentProvider := provider.NewMockProvider()
-	paymentSvc := apppayment.NewService(repo, paymentProvider)
+	tracer := tracing.NewNoOpTracer() // Use no-op tracer for integration tests
+	paymentProvider := provider.NewMockProvider(tracer)
+	paymentSvc := apppayment.NewService(repo, paymentProvider, tracer)
 	healthSvc := apphealth.NewService()
 	verifier := webhook.NewMockVerifier()
+	requestMetrics := middleware.NewRequestMetrics()
 
 	paymentHandler := handlers.NewPaymentHandler(paymentSvc, verifier)
 	healthHandler := handlers.NewHealthHandler(healthSvc)
@@ -42,7 +47,7 @@ func TestPaymentFlow_Integration(t *testing.T) {
 		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
 	}
 	payment.SetSupportedCurrencies([]string{"USD", "EUR", "GBP"}) // Set a default set for tests
-	gatewayhttp.SetupRoutes(mux, paymentHandler, healthHandler)
+	gatewayhttp.SetupRoutes(mux, paymentHandler, healthHandler, requestMetrics)
 
 	ts := httptest.NewServer(mux)
 	defer ts.Close()

@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerra/kube-refresh/project-payment-gateway/internal/transport/http/middleware"
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
@@ -28,7 +30,7 @@ func main() {
 	cfg, err := config.Load()
 
 	// Fail fast on invalid configuration
-	if err != nil {
+	if err != nil { // Use standard log here as slog might not be fully configured yet
 		slog.Error("configuration error", "error", err)
 		os.Exit(1)
 	}
@@ -48,17 +50,20 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(logger)
 
+	// Initialize Tracer
+	appTracer := tracing.NewLoggerTracer(logger)
+
 	// Initialize domain-level configurations
 	payment.SetSupportedCurrencies(cfg.SupportedCurrencies)
 
 	// Initialize Repositories
 	var paymentRepo payment.Repository
 	if cfg.DatabaseURL != "" {
-		paymentRepo = postgres.NewRepository(context.Background(), cfg.DatabaseURL)
-		slog.Info("using postgres repository", "type", "postgres")
+		paymentRepo = postgres.NewRepository(context.Background(), cfg.DatabaseURL, appTracer)
+		slogext.Ctx(context.Background()).Info("using postgres repository", "type", "postgres")
 	} else {
-		paymentRepo = inmemory.NewRepository()
-		slog.Info("using in-memory repository", "type", "inmemory")
+		paymentRepo = inmemory.NewRepository(appTracer)
+		slogext.Ctx(context.Background()).Info("using in-memory repository", "type", "inmemory")
 	}
 
 	// Initialize Provider based on configuration flag
@@ -67,16 +72,16 @@ func main() {
 		paymentProvider = stripe.NewStripeProvider(stripe.Config{
 			APIKey:        cfg.StripeAPIKey,
 			WebhookSecret: cfg.StripeWebhookSecret,
-		})
-		slog.Info("using stripe payment provider", "provider", "stripe")
+		}, appTracer)
+		slogext.Ctx(context.Background()).Info("using stripe payment provider", "provider", "stripe")
 	} else {
-		paymentProvider = provider.NewMockProvider()
-		slog.Info("using mock payment provider", "provider", "mock")
+		paymentProvider = provider.NewMockProvider(appTracer)
+		slogext.Ctx(context.Background()).Info("using mock payment provider", "provider", "mock")
 	}
 
 	// Initialize Services
 	healthService := apphealth.NewService()
-	paymentService := apppayment.NewService(paymentRepo, paymentProvider)
+	paymentService := apppayment.NewService(paymentRepo, paymentProvider, appTracer)
 	webhookVerifier := webhook.NewMockVerifier()
 
 	// Initialize Handlers
@@ -86,21 +91,24 @@ func main() {
 	// Initialize Prometheus metrics
 	requestMetrics := middleware.NewRequestMetrics()
 
-	mux := http.NewServeMux()
-
 	// Setup routes using the new router
-	transport.SetupRoutes(mux, paymentHandler, healthHandler, requestMetrics)
+	// The router itself will be wrapped by the correlation ID middleware
+	routerMux := http.NewServeMux()
+	transport.SetupRoutes(routerMux, paymentHandler, healthHandler, requestMetrics)
+
+	// Apply CorrelationIDMiddleware to the entire router
+	finalHandler := middleware.CorrelationIDMiddleware(appTracer, routerMux)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: mux,
+		Handler: finalHandler,
 	}
 
 	// Run server in a goroutine
-	go func() {
-		slog.Info("starting payment gateway server", "port", cfg.Port)
+	go func() { // Use standard log here as slog might not be fully configured yet
+		slogext.Ctx(context.Background()).Info("starting payment gateway server", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server failed to start", "error", err)
+			slogext.Ctx(context.Background()).Error("server failed to start", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -108,20 +116,20 @@ func main() {
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	slog.Info("received shutdown signal", "signal", sig.String())
+	sig := <-quit // Use standard log here as slog might not be fully configured yet
+	slogext.Ctx(context.Background()).Info("received shutdown signal", "signal", sig.String())
 
-	slog.Info("shutting down server...")
+	slogext.Ctx(context.Background()).Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("server forced to shutdown", "error", err)
+		slogext.Ctx(context.Background()).Error("server forced to shutdown", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("closing repository...")
+	slogext.Ctx(context.Background()).Info("closing repository...")
 	paymentRepo.Close()
 
-	slog.Info("server exited gracefully")
+	slogext.Ctx(context.Background()).Info("server exited gracefully")
 }

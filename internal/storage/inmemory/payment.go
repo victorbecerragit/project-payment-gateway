@@ -27,9 +27,15 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 	return nil
 }
 
+
 func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "inmemory.GetByID")
+	defer span.End()
+	span.SetAttribute("payment.id", id)
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	p, ok := r.payments[id]
 	if !ok {
 		return nil, fmt.Errorf("payment not found")
@@ -38,10 +44,16 @@ func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, 
 }
 
 func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "inmemory.GetByIdempotencyKey")
+	defer span.End()
+	span.SetAttribute("idempotency.key", key)
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	for _, p := range r.payments {
 		if p.IdempotencyKey == key {
+			span.SetAttribute("payment.id", p.ID)
 			return p, nil
 		}
 	}
@@ -49,10 +61,16 @@ func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*paym
 }
 
 func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "inmemory.GetByProviderRef")
+	defer span.End()
+	span.SetAttribute("provider.ref", providerRef)
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	for _, p := range r.payments {
 		if p.TransactionID == providerRef {
+			span.SetAttribute("payment.id", p.ID)
 			return p, nil
 		}
 	}
@@ -61,4 +79,5 @@ func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (
 
 func (r *repository) Close() {
 	// No-op for in-memory repository
+	slogext.Ctx(context.Background()).Info("in-memory repository closed (no-op)")
 }
