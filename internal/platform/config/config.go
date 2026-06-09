@@ -24,7 +24,13 @@ type Config struct {
 // Load loads the configuration from environment variables
 func Load() (*Config, error) {
 	// Load .env file if it exists. This will not override existing environment variables.
-	_ = godotenv.Load() // Ignore error if .env file doesn't exist
+	if data, err := os.ReadFile(".env"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if k, v, ok := strings.Cut(line, "="); ok && os.Getenv(strings.TrimSpace(k)) == "" {
+				_ = os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v))
+			}
+		}
+	}
 
 	currenciesStr := getEnv("SUPPORTED_CURRENCIES", "USD,EUR,GBP")
 	supportedCurrencies := strings.Split(currenciesStr, ",")

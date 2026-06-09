@@ -76,7 +76,7 @@ func TestPostgresRepository(t *testing.T) {
 	defer cleanup()
 
 	payment.SetSupportedCurrencies([]string{"USD", "EUR"})
-	ctx := context.Background() // Use a fresh context for each test run
+	ctx := context.Background()
 	repo := pgrepo.NewRepository(ctx, dsn, nil) // Pass nil for tracer in tests
 
 	t.Run("Save and GetByID", func(t *testing.T) {

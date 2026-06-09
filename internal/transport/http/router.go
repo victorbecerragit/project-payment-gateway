@@ -18,8 +18,8 @@ func SetupRoutes(mux *http.ServeMux, p *handlers.PaymentHandler, h *handlers.Hea
 	webhookLimiter := middleware.NewIPRateLimiter(rateLimiterCtx, rate.Limit(cfg.WebhookRateLimit), cfg.WebhookBurst, m)
 
 	// Add rate limiters to the custom Prometheus collector
-	m.uniqueIPsCollector.AddLimiter(apiLimiter, "api")
-	m.uniqueIPsCollector.AddLimiter(webhookLimiter, "webhook")
+	m.AddLimiter(apiLimiter, "api")
+	m.AddLimiter(webhookLimiter, "webhook")
 
 	// Health routes
 	mux.Handle("GET /health", m.MetricsMiddleware("/health", http.HandlerFunc(h.Health)))

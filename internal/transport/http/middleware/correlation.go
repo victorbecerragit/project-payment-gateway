@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/contextkey"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 )

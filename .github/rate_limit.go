@@ -30,13 +30,13 @@ type IPRateLimiter struct {
 }
 
 // NewIPRateLimiter creates a new limiter with a specific rate (req/s) and burst size.
-func NewIPRateLimiter(ctx context.Context, r rate.Limit, b int, rm *RequestMetrics) *IPRateLimiter { // Corrected to use RequestMetrics
+func NewIPRateLimiter(ctx context.Context, r rate.Limit, b int, rm *RequestMetrics) *IPRateLimiter {
 	return NewIPRateLimiterWithCustomCleanup(ctx, r, b, rm, time.Minute, 3*time.Minute)
 }
 
 // NewIPRateLimiterWithCustomCleanup creates a new limiter with custom cleanup durations.
 // It is primarily used for testing purposes.
-func NewIPRateLimiterWithCustomCleanup(ctx context.Context, r rate.Limit, b int, rm *RequestMetrics, interval, ttl time.Duration) *IPRateLimiter { // Corrected to use RequestMetrics
+func NewIPRateLimiterWithCustomCleanup(ctx context.Context, r rate.Limit, b int, rm *RequestMetrics, interval, ttl time.Duration) *IPRateLimiter {
 	i := &IPRateLimiter{
 		ips:             make(map[string]*client),
 		r:               r,

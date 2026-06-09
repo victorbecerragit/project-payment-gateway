@@ -18,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 )
 
 //go:embed migrations/*.sql
@@ -38,32 +40,33 @@ var requiredPaymentColumns = []string{
 	"updated_at",
 }
 
-// ErrNotImplemented is returned by all stub methods until a real driver is added.
-var ErrNotImplemented = errors.New("postgres repository: not yet implemented")
-
 // repository is a placeholder that satisfies payment.Repository at compile time.
 // Replace the stub bodies with real pgx / database/sql calls.
 type repository struct {
 	db *pgxpool.Pool
+	tracer tracing.Tracer
 }
 
 // NewRepository creates a Postgres-backed payment repository.
 // dsn is a PostgreSQL connection string (e.g. "postgres://user:pass@host/db").
-func NewRepository(ctx context.Context, dsn string, _ any) payment.Repository {
+func NewRepository(ctx context.Context, dsn string, tracer tracing.Tracer) payment.Repository {
+	if tracer == nil {
+		tracer = tracing.NewNoOpTracer()
+	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		slog.Error("unable to create connection pool", "error", err)
+		slogext.Ctx(ctx).Error("unable to create connection pool", "error", err)
 		os.Exit(1)
 	}
 
 	// Verify connectivity
 	if err := pool.Ping(ctx); err != nil {
-		slog.Error("unable to connect to database", "error", err)
+		slogext.Ctx(ctx).Error("unable to connect to database", "error", err)
 		os.Exit(1)
 	}
 
 	if err := runMigrations(ctx, pool); err != nil {
-		slog.Error("failed to run migrations", "error", err)
+		slogext.Ctx(ctx).Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
 
@@ -72,7 +75,7 @@ func NewRepository(ctx context.Context, dsn string, _ any) payment.Repository {
 		os.Exit(1)
 	}
 
-	return &repository{db: pool}
+	return &repository{db: pool, tracer: tracer}
 }
 
 func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
@@ -80,6 +83,7 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	// CI should separately validate reversible up/down migrations before merge.
 	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {
+		slogext.Ctx(ctx).Error("failed to read migrations directory", "error", err)
 		return fmt.Errorf("failed to read migrations directory: %w", err)
 	}
 
@@ -88,9 +92,14 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
-	for _, name := range migrationNames {
+	for _, name := range migrationNames { // Corrected loop variable name
+		ctx, span := tracing.CtxTracer(ctx).StartSpan(ctx, "db.runMigration")
+		defer span.End()
+		span.SetAttribute("migration.name", name)
+
 		content, err := migrationFS.ReadFile("migrations/" + name)
 		if err != nil {
+			slogext.Ctx(ctx).Error("failed to read migration file", "file", name, "error", err)
 			return fmt.Errorf("failed to read migration file %s: %w", name, err)
 		}
 
@@ -171,6 +180,9 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 			updated_at = EXCLUDED.updated_at;
 	`
 
+	ctx, span := r.tracer.StartSpan(ctx, "postgres.Save")
+	defer span.End()
+	span.SetAttribute("payment.id", p.ID)
 	// Convert domain float amount (dollars) to BIGINT (cents) for DB storage
 	amountCents := int64(p.Amount.Value() * 100)
 
@@ -188,20 +200,32 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 	)
 
 	if err != nil {
-		slog.Error("failed to save payment", "payment_id", p.ID, "error", err)
+		slogext.Ctx(ctx).Error("failed to save payment", "payment_id", p.ID, "error", err)
 		return fmt.Errorf("failed to save payment: %w", err)
 	}
 	return nil
 }
 
 func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "postgres.GetByID")
+	defer span.End()
+	span.SetAttribute("payment.id", id)
+
 	query := fmt.Sprintf("SELECT %s FROM payments WHERE id = $1", paymentFields)
 	return r.scanRow(r.db.QueryRow(ctx, query, id))
 }
 
 func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "postgres.GetByIdempotencyKey")
+	defer span.End()
+	span.SetAttribute("idempotency.key", key)
+
 	query := fmt.Sprintf("SELECT %s FROM payments WHERE idempotency_key = $1", paymentFields)
 	p, err := r.scanRow(r.db.QueryRow(ctx, query, key))
+	if p != nil {
+		span.SetAttribute("payment.id", p.ID)
+	}
+
 	if errors.Is(err, payment.ErrPaymentNotFound) {
 		return nil, nil
 	}
@@ -209,8 +233,14 @@ func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*paym
 }
 
 func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "postgres.GetByProviderRef")
+	defer span.End()
+	span.SetAttribute("provider.ref", providerRef)
+
 	query := fmt.Sprintf("SELECT %s FROM payments WHERE transaction_id = $1", paymentFields)
-	return r.scanRow(r.db.QueryRow(ctx, query, providerRef))
+	p, err := r.scanRow(r.db.QueryRow(ctx, query, providerRef))
+	if p != nil { span.SetAttribute("payment.id", p.ID) }
+	return p, err
 }
 
 // scanRow is a helper to map a database row back into a domain Payment entity.
@@ -240,6 +270,7 @@ func (r *repository) scanRow(row pgx.Row) (*payment.Payment, error) {
 	)
 
 	if err != nil {
+		slog.Default().Debug("error scanning row", "error", err)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, payment.ErrPaymentNotFound
 		}
@@ -268,6 +299,6 @@ func nullString(s string) *string {
 func (r *repository) Close() {
 	if r.db != nil {
 		r.db.Close()
-		slog.Info("postgres connection pool closed")
+		slogext.Ctx(context.Background()).Info("postgres connection pool closed")
 	}
 }

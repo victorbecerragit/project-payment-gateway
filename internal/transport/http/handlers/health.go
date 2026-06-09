@@ -1,11 +1,11 @@
 package handlers
 
 import (
-	"log/slog"
 	"net/http"
 	"time"
 
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
 	"github.com/victorbecerragit/project-payment-gateway/internal/transport/http/response"
 )
 
@@ -18,7 +18,7 @@ func NewHealthHandler(s apphealth.Service) *HealthHandler {
 }
 
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	slog.Ctx(r.Context()).Debug("health check requested")
+	slogext.Ctx(r.Context()).Debug("health check requested")
 	status := "unhealthy"
 	statusCode := http.StatusOK
 	if h.service.Health() {
@@ -34,7 +34,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
-	slog.Ctx(r.Context()).Debug("readiness check requested")
+	slogext.Ctx(r.Context()).Debug("readiness check requested")
 	status := "unhealthy"
 	statusCode := http.StatusOK
 	if h.service.Ready() {

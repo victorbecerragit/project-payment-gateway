@@ -146,7 +146,6 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 			Provider: p.Name(),
 			Code:     stripeErr.Error.Code,
 			Message:  msg,
-			Code:     stripeErr.Error.Code,
 		}
 	}
 

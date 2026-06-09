@@ -6,17 +6,24 @@ import (
 	"sync"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 )
 
 type repository struct {
 	mu       sync.RWMutex
 	payments map[string]*payment.Payment
+	tracer   tracing.Tracer
 }
 
 // NewRepository creates a new in-memory payment repository
-func NewRepository() payment.Repository {
+func NewRepository(tracer tracing.Tracer) payment.Repository {
+	if tracer == nil {
+		tracer = tracing.NewNoOpTracer()
+	}
 	return &repository{
 		payments: make(map[string]*payment.Payment),
+		tracer:   tracer,
 	}
 }
 
@@ -36,6 +43,9 @@ func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	span.SetAttribute("payment.id", id)
+	defer span.End()
+
 	p, ok := r.payments[id]
 	if !ok {
 		return nil, fmt.Errorf("payment not found")
@@ -50,6 +60,9 @@ func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*paym
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
+	span.SetAttribute("idempotency.key", key)
+	defer span.End()
 
 	for _, p := range r.payments {
 		if p.IdempotencyKey == key {
@@ -67,6 +80,9 @@ func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
+	span.SetAttribute("provider.ref", providerRef)
+	defer span.End()
 
 	for _, p := range r.payments {
 		if p.TransactionID == providerRef {

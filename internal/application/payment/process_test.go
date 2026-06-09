@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	inmemory "github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
@@ -18,8 +19,8 @@ func TestProcessEvent_CompletesPayment(t *testing.T) {
 	}
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
-	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo, provider.NewMockProvider())
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
 	ctx := context.Background()
 
 	// create payment
@@ -64,8 +65,8 @@ func TestProcessEvent_UnknownType(t *testing.T) {
 	}
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
-	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo, provider.NewMockProvider())
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
 	ctx := context.Background()
 
 	p := &payment.Payment{
@@ -97,8 +98,8 @@ func TestProcessEvent_Idempotency(t *testing.T) {
 	}
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
-	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo, provider.NewMockProvider())
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
 	ctx := context.Background()
 
 	p := &payment.Payment{
@@ -145,8 +146,8 @@ func TestProcessEvent_FailsPaymentFromPending(t *testing.T) {
 	}
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
-	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo, provider.NewMockProvider())
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
 	ctx := context.Background()
 
 	// create payment in pending state
@@ -194,8 +195,8 @@ func TestProcessEvent_CancelsPaymentFromPending(t *testing.T) {
 	}
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
-	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo, provider.NewMockProvider())
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
 	ctx := context.Background()
 
 	// Create payment in pending state
@@ -279,8 +280,9 @@ func setupPayment(t *testing.T, svc apppayment.Service, repo payment.Repository,
 func newSvc(t *testing.T) (apppayment.Service, payment.Repository) {
 	t.Helper()
 	payment.SetSupportedCurrencies([]string{"USD"})
-	repo := inmemory.NewRepository()
-	return apppayment.NewService(repo, provider.NewMockProvider()), repo
+	payment.SetSupportedCurrencies([]string{"USD"}) // Ensure currencies are set for domain validation
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	return apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer()), repo
 }
 
 // TestProcessEvent_TerminalSameEvent verifies that a duplicate terminal webhook is

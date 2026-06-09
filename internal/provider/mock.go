@@ -36,6 +36,8 @@ func (m *MockProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequ
 	// Generate a synthetic transaction ID (in real provider, this comes from the provider)
 	txnID := "txn_mock_" + req.IdempotencyKey
 
+	span.SetAttribute("payment.id", req.PaymentID)
+	span.SetAttribute("provider.transaction_id", txnID)
 	return &CreatePaymentResponse{
 		TransactionID: txnID,
 		ProviderStatus: "succeeded",
@@ -43,9 +45,6 @@ func (m *MockProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequ
 			"provider":          "mock",
 			"idempotency_key":   req.IdempotencyKey,
 		},
-	}
-	span.SetAttribute("payment.id", req.PaymentID)
-	span.SetAttribute("provider.transaction_id", txnID)
 	}, nil
 }
 
@@ -64,6 +63,8 @@ func (m *MockProvider) ParseWebhook(ctx context.Context, payload []byte, signatu
 
 	// In a real provider, unmarshal provider-specific payload here and verify signature
 	// For now, just acknowledge the webhook
+	span.SetAttribute("webhook.signature", signature)
+	span.SetAttribute("webhook.payload", string(payload))
 	return &WebhookEvent{
 		EventType:         "payment.completed",
 		ProviderEventType: "charge.succeeded",
@@ -71,8 +72,6 @@ func (m *MockProvider) ParseWebhook(ctx context.Context, payload []byte, signatu
 		ProviderData: map[string]interface{}{
 			"provider": "mock",
 			"payload_size": len(payload),
-			"webhook.signature", signature,
-			"webhook.payload", string(payload),
 		},
 	}, nil
 }

@@ -13,12 +13,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider/stripe"
 )
 
 func TestStripeProvider_Name(t *testing.T) {
-	p := stripe.NewStripeProvider(stripe.Config{APIKey: "sk_test_123"})
+	p := stripe.NewStripeProvider(stripe.Config{APIKey: "sk_test_123"}, tracing.NewNoOpTracer())
 	if p.Name() != "stripe" {
 		t.Errorf("expected provider name to be 'stripe', got '%s'", p.Name())
 	}
@@ -89,7 +90,7 @@ func TestStripeProvider_CreatePayment_Success(t *testing.T) {
 	prov := stripe.NewStripeProvider(stripe.Config{
 		APIKey:  "sk_test_key",
 		BaseURL: server.URL,
-	})
+	}, tracing.NewNoOpTracer())
 
 	req := &provider.CreatePaymentRequest{
 		PaymentID:      "pay_abc",
@@ -138,7 +139,7 @@ func TestStripeProvider_CreatePayment_StripeError(t *testing.T) {
 	prov := stripe.NewStripeProvider(stripe.Config{
 		APIKey:  "sk_test_key",
 		BaseURL: server.URL,
-	})
+	}, tracing.NewNoOpTracer())
 
 	req := &provider.CreatePaymentRequest{
 		PaymentID:   "pay_abc",
@@ -200,7 +201,7 @@ func TestStripeProvider_Webhook_VerifyAndParse(t *testing.T) {
 		prov := stripe.NewStripeProvider(stripe.Config{
 			APIKey:        "sk_test_key",
 			WebhookSecret: secret,
-		})
+		}, tracing.NewNoOpTracer())
 
 		event, err := prov.ParseWebhook(context.Background(), payload, sigHeader)
 		if err != nil {
@@ -225,7 +226,7 @@ func TestStripeProvider_Webhook_VerifyAndParse(t *testing.T) {
 		prov := stripe.NewStripeProvider(stripe.Config{
 			APIKey:        "sk_test_key",
 			WebhookSecret: secret,
-		})
+		}, tracing.NewNoOpTracer())
 
 		badHeader := sigHeader + "1"
 		_, err := prov.ParseWebhook(context.Background(), payload, badHeader)
@@ -238,7 +239,7 @@ func TestStripeProvider_Webhook_VerifyAndParse(t *testing.T) {
 		prov := stripe.NewStripeProvider(stripe.Config{
 			APIKey:        "sk_test_key",
 			WebhookSecret: secret,
-		})
+		}, tracing.NewNoOpTracer())
 
 		_, err := prov.ParseWebhook(context.Background(), payload, "t=invalid,v1=nonsense")
 		if err == nil {

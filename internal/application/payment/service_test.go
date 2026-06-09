@@ -6,6 +6,7 @@ import (
 
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
 	inmemory "github.com/victorbecerragit/project-payment-gateway/internal/storage/inmemory"
 )
@@ -18,8 +19,8 @@ func TestCreatePayment_Idempotency(t *testing.T) {
 	}
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
-	repo := inmemory.NewRepository()
-	svc := apppayment.NewService(repo, provider.NewMockProvider())
+	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
 	ctx := context.Background()
 
 	p := &payment.Payment{

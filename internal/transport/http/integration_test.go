@@ -2,12 +2,14 @@ package http_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 
 	apphealth "github.com/victorbecerragit/project-payment-gateway/internal/application/health"
@@ -27,8 +29,8 @@ import (
 // and then verifies the completed status and transaction ID.
 func TestPaymentFlow_Integration(t *testing.T) {
 	// 1. Setup dependencies and router
-	repo := inmemory.NewRepository()
 	tracer := tracing.NewNoOpTracer() // Use no-op tracer for integration tests
+	repo := inmemory.NewRepository(tracer)
 	paymentProvider := provider.NewMockProvider(tracer)
 	paymentSvc := apppayment.NewService(repo, paymentProvider, tracer)
 	healthSvc := apphealth.NewService()
@@ -47,7 +49,15 @@ func TestPaymentFlow_Integration(t *testing.T) {
 		originalCurrencyStrs = append(originalCurrencyStrs, string(k))
 	}
 	payment.SetSupportedCurrencies([]string{"USD", "EUR", "GBP"}) // Set a default set for tests
-	gatewayhttp.SetupRoutes(mux, paymentHandler, healthHandler, requestMetrics)
+
+	// Dummy config and context for integration test
+	dummyConfig := &config.Config{
+		APIRateLimit:     100,
+		APIBurst:         200,
+		WebhookRateLimit: 100,
+		WebhookBurst:     200,
+	}
+	gatewayhttp.SetupRoutes(mux, paymentHandler, healthHandler, requestMetrics, dummyConfig, context.Background())
 
 	ts := httptest.NewServer(mux)
 	defer ts.Close()

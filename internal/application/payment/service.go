@@ -128,8 +128,8 @@ func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) err
 	case payment.EventPaymentCancelled:
 		nextStatus = payment.StatusCancelled
 	default:
-		return fmt.Errorf("unknown event type: %s", e.Type)
 		slogext.Ctx(ctx).Warn("unknown event type", "event_type", e.Type)
+		return fmt.Errorf("unknown event type: %s", e.Type)
 	}
 
 	// Idempotency: if the payment has already reached the status reported by the event, stop here.
@@ -184,8 +184,8 @@ func (s *service) ParseWebhook(ctx context.Context, payload []byte, signature st
 	case "payment.cancelled":
 		domainEventType = payment.EventPaymentCancelled
 	default:
-		return nil, fmt.Errorf("unrecognized provider event type %q: no domain mapping defined", webhookEvent.EventType)
 		slogext.Ctx(ctx).Warn("unrecognized provider event type", "provider_event_type", webhookEvent.EventType)
+		return nil, fmt.Errorf("unrecognized provider event type %q: no domain mapping defined", webhookEvent.EventType)
 	}
 
 	// Return domain PaymentEvent
