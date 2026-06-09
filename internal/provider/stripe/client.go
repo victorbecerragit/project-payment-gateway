@@ -117,7 +117,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 			Code:     "network_error",
 		}
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

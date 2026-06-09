@@ -71,7 +71,7 @@ func TestStripeProvider_CreatePayment_Success(t *testing.T) {
 		// Write realistic Stripe PaymentIntent payload
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 			"id": "pi_12345abcd",
 			"object": "payment_intent",
 			"status": "requires_payment_method",
@@ -126,7 +126,7 @@ func TestStripeProvider_CreatePayment_StripeError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 			"error": {
 				"message": "The card number is incorrect.",
 				"type": "card_error",

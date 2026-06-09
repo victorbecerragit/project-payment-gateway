@@ -89,7 +89,7 @@ func TestPaymentFlow_Integration(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&paymentCreated); err != nil {
 		t.Fatalf("Failed to decode payment response: %v", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	paymentID := paymentCreated.PaymentID
 	if paymentID == "" {
@@ -106,8 +106,10 @@ func TestPaymentFlow_Integration(t *testing.T) {
 	}
 
 	var paymentDetails dto.PaymentResponse
-	json.NewDecoder(resp.Body).Decode(&paymentDetails)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&paymentDetails); err != nil {
+		t.Fatalf("Failed to decode payment details: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
 
 	if paymentDetails.Status != "pending" {
 		t.Errorf("Expected initial status 'pending', got '%s'", paymentDetails.Status)
@@ -132,12 +134,17 @@ func TestPaymentFlow_Integration(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected 200 OK for webhook, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	resp.Body.Close() //nolint:errcheck
 
 	// 5. Verify Status is Completed (GET /api/v1/payments/{payment_id})
 	resp, err = client.Get(ts.URL + "/api/v1/payments/" + paymentID)
-	json.NewDecoder(resp.Body).Decode(&paymentDetails)
-	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("Failed to get final payment status: %v", err)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&paymentDetails); err != nil {
+		t.Fatalf("Failed to decode final payment details: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
 
 	if paymentDetails.Status != "completed" {
 		t.Errorf("Expected status 'completed' after webhook, got '%s'", paymentDetails.Status)

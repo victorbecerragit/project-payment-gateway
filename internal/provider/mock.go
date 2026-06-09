@@ -30,7 +30,7 @@ func (m *MockProvider) CreatePayment(ctx context.Context, req *CreatePaymentRequ
 		}
 	}
 
-	ctx, span := m.tracer.StartSpan(ctx, "mock.CreatePayment")
+	_, span := m.tracer.StartSpan(ctx, "mock.CreatePayment")
 	defer span.End()
 
 	// Generate a synthetic transaction ID (in real provider, this comes from the provider)
@@ -58,7 +58,7 @@ func (m *MockProvider) ParseWebhook(ctx context.Context, payload []byte, signatu
 		}
 	}
 
-	ctx, span := m.tracer.StartSpan(ctx, "mock.ParseWebhook")
+	_, span := m.tracer.StartSpan(ctx, "mock.ParseWebhook")
 	defer span.End()
 
 	// In a real provider, unmarshal provider-specific payload here and verify signature

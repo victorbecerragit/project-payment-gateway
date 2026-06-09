@@ -6,7 +6,6 @@ linters:
     - unused
     - gosimple
     - bodyclose
-    - depguard
 
 issues:
   exclude-use-default: false

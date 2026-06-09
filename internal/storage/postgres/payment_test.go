@@ -16,8 +16,8 @@ import (
 func setupTestDatabase(t *testing.T) (string, func()) {
 	ctx := context.Background()
 
-	pgContainer, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15-alpine"),
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:15-alpine",
 		postgres.WithDatabase("payment_gateway"),
 		postgres.WithUsername("user"),
 		postgres.WithPassword("pass"),
@@ -63,7 +63,9 @@ func setupTestDatabase(t *testing.T) (string, func()) {
 	}
 
 	return connStr, func() {
-		pgContainer.Terminate(ctx)
+		if err := pgContainer.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate postgres container: %v", err)
+		}
 	}
 }
 
@@ -164,7 +166,9 @@ func TestPostgresRepository(t *testing.T) {
 	t.Run("Currency and Amount Integrity", func(t *testing.T) {
 		// Test EUR and precision
 		p, _ := payment.NewPayment("pay_eur", "tx_eur", "cust_456", 1234.56, "EUR", "Precision test", "idem_eur")
-		repo.Save(ctx, p)
+if err := repo.Save(ctx, p); err != nil {
+				t.Fatalf("failed to save payment: %v", err)
+			}
 
 		got, _ := repo.GetByID(ctx, "pay_eur")
 		if got.Currency != "EUR" {

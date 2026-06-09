@@ -36,15 +36,12 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 
 
 func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, error) {
-	ctx, span := r.tracer.StartSpan(ctx, "inmemory.GetByID")
+	_, span := r.tracer.StartSpan(ctx, "inmemory.GetByID")
 	defer span.End()
 	span.SetAttribute("payment.id", id)
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
-	span.SetAttribute("payment.id", id)
-	defer span.End()
 
 	p, ok := r.payments[id]
 	if !ok {
@@ -54,15 +51,12 @@ func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, 
 }
 
 func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*payment.Payment, error) {
-	ctx, span := r.tracer.StartSpan(ctx, "inmemory.GetByIdempotencyKey")
+	_, span := r.tracer.StartSpan(ctx, "inmemory.GetByIdempotencyKey")
 	defer span.End()
 	span.SetAttribute("idempotency.key", key)
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
-	span.SetAttribute("idempotency.key", key)
-	defer span.End()
 
 	for _, p := range r.payments {
 		if p.IdempotencyKey == key {
@@ -74,7 +68,7 @@ func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*paym
 }
 
 func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (*payment.Payment, error) {
-	ctx, span := r.tracer.StartSpan(ctx, "inmemory.GetByProviderRef")
+	_, span := r.tracer.StartSpan(ctx, "inmemory.GetByProviderRef")
 	defer span.End()
 	span.SetAttribute("provider.ref", providerRef)
 
