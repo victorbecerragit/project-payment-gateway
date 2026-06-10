@@ -85,10 +85,6 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, req *provider.Create
 		}
 	}
 
-	// Standard confirm flow for simple Card API integrations
-	form.Set("confirm", "true")
-	form.Set("payment_method_types[]", "card")
-
 	span.SetAttribute("payment.id", req.PaymentID)
 	span.SetAttribute("amount", req.Amount)
 	span.SetAttribute("currency", req.Currency)

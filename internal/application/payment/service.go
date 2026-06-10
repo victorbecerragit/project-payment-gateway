@@ -70,11 +70,12 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 	// Call provider to create payment with provider (e.g., Stripe, PayPal)
 	providerReq := &provider.CreatePaymentRequest{
 		PaymentID:      p.ID,
-		Amount:         int64(p.Amount.Value() * 100), // Convert to cents
+		Amount:         int64(p.Amount.Value() * 100),
 		Currency:       string(p.Currency),
 		Description:    p.Description,
 		CustomerID:     p.CustomerID.Value(),
 		IdempotencyKey: p.IdempotencyKey,
+		PaymentMethod:  p.PaymentMethod,
 	}
 
 	ctx, span := s.tracer.StartSpan(ctx, "provider.CreatePayment")
@@ -184,8 +185,8 @@ func (s *service) ParseWebhook(ctx context.Context, payload []byte, signature st
 	case "payment.cancelled":
 		domainEventType = payment.EventPaymentCancelled
 	default:
-		slogext.Ctx(ctx).Warn("unrecognized provider event type", "provider_event_type", webhookEvent.EventType)
-		return nil, fmt.Errorf("unrecognized provider event type %q: no domain mapping defined", webhookEvent.EventType)
+		slogext.Ctx(ctx).Info("ignoring unrecognized provider event type", "provider_event_type", webhookEvent.EventType)
+		return nil, fmt.Errorf("%w: %q", payment.ErrUnknownEventType, webhookEvent.EventType)
 	}
 
 	// Return domain PaymentEvent

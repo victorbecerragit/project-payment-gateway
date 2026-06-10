@@ -114,6 +114,11 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// 1 & 2. Parse and verify webhook payload via service provider delegation
 	event, err := h.service.ParseWebhook(r.Context(), body, signature)
 	if err != nil {
+		if errors.Is(err, payment.ErrUnknownEventType) {
+			slogext.Ctx(r.Context()).Info("ignoring unhandled webhook event type", "error", err)
+			response.RespondWithJSON(w, http.StatusOK, map[string]bool{"received": true})
+			return
+		}
 		slogext.Ctx(r.Context()).Warn("invalid webhook payload or signature", "signature", signature, "error", err)
 		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Invalid webhook payload or signature")
 		return

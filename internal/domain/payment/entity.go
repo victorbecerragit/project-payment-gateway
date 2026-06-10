@@ -134,6 +134,7 @@ type Payment struct {
 	TransactionID  string
 	CustomerID     CustomerID
 	Description    string
+	PaymentMethod  string // optional provider payment method token (e.g. Stripe pm_card_visa)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

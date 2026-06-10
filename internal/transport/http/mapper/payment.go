@@ -19,10 +19,11 @@ func ToPaymentDomain(req *dto.PaymentRequest, idempotencyKey string) (*dompaymen
 
 	return &dompayment.Payment{
 		Amount:         amount,
-		Currency:       dompayment.Currency(req.Currency), // NewPayment will normalize case
+		Currency:       dompayment.Currency(req.Currency),
 		Description:    req.Description,
 		CustomerID:     customerID,
 		IdempotencyKey: idempotencyKey,
+		PaymentMethod:  req.CardToken,
 	}, nil
 }
 
