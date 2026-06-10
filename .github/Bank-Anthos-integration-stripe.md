@@ -1,249 +1,269 @@
-# Copilot Instructions — Bank of Anthos Integration Ideas with Stripe Demo Track
+# Stripe Integration Guide for Project Payment Gateway
 
-Bank of Anthos is a Kubernetes-native sample banking application used by Google to demonstrate GKE, Anthos Service Mesh, Anthos Config Management, Cloud Operations, Cloud SQL, Cloud Build, and Cloud Deploy patterns.
+This guide provides a comprehensive overview of how to integrate Stripe into the existing `project-payment-gateway` scaffold. It covers everything from configuration to handling payments and webhooks, following best practices for a robust and secure integration.
 
-The Payment Gateway project should use Bank of Anthos mainly as a packaging, deployment, and platform-demo reference, while Stripe should be treated as the first real provider proof point for the payment-gateway POV.
+## 1. Introduction
 
-## Goal
+The `project-payment-gateway` is designed to be a flexible and extensible platform for processing payments. This guide focuses on integrating Stripe as a payment provider, leveraging the existing structure of the application to create a seamless and scalable solution.
 
-Use Bank of Anthos patterns to turn the Payment Gateway into a stronger demo platform, and use Stripe to prove that the gateway works end to end with a real PSP integration.
+## 2. Prerequisites
 
-## Core rule
+Before you begin, ensure you have the following:
 
-Keep the domain and application core provider-agnostic, but make Stripe a first-class demo and validation path in the demo, extras, and docs layers.
+- A Stripe account.
+- Your Stripe API keys (publishable and secret).
+- Go 1.18 or higher installed on your local machine.
+- Docker and Docker Compose for running the application and its dependencies.
 
-## What to reuse from Bank of Anthos
+## 3. Configuration
 
-The most useful patterns to reuse are:
+Properly configuring your Stripe integration is crucial for security and maintainability. Follow these steps to set up your configuration:
 
-- Clear separation between application code, deployment assets, docs, extras, and infrastructure folders.
-- Demo-oriented support services such as frontend and load generation.
-- Optional platform add-ons packaged under `extras/`.
-- Strong environment, troubleshooting, and extensibility documentation.
+### 3.1. Environment Variables
 
-## What Stripe adds to the story
+Store your Stripe API keys and other configuration settings as environment variables. This prevents sensitive information from being hardcoded in your application. Add the following variables to your `.env` file:
 
-Stripe gives the project a concrete PSP path for demos, testing, and stakeholder validation.
-
-It allows the POV story to become:
-
-- `frontend/demo client -> payment gateway -> Stripe PaymentIntent -> Stripe webhook -> gateway status update`.
-- Local and sandbox webhook testing through Stripe CLI forwarding and event triggering.
-- Realistic success, failure, and cancellation scenarios instead of mock-only flows.
-
-## Suggested repo shape
-
-```text
-cmd/
-internal/
-deploy/
-  k8s/
-extras/
-  prometheus/
-  otel/
-  istio/
-  jwt/
-  backup/
-  postgres/
-  stripe-sandbox/
-demo/
-  frontend/
-  loadgenerator/
-docs/
-  environments.md
-  troubleshooting.md
-  adding-new-provider.md
-  demo-setup.md
-  stripe-demo.md
-iac/
+```bash
+STRIPE_API_KEY="your_stripe_secret_key"
+STRIPE_WEBHOOK_SECRET="your_stripe_webhook_secret"
 ```
 
-## Stripe demo track
+### 3.2. Loading Configuration
 
-### Stripe demo packaging
+The application uses a dedicated `config` package to load environment variables. Ensure that the `config.go` file includes the necessary fields for your Stripe configuration:
 
-Add a dedicated `extras/stripe-sandbox/` package.
+```go
+package config
 
-Suggested contents:
+import (
+	"github.com/kelseyhightower/envconfig"
+)
 
-- Example env file for `STRIPE_API_KEY` and `STRIPE_WEBHOOK_SECRET`.
-- README with local and Kubernetes setup steps.
-- Example webhook forwarding commands using Stripe CLI.
-- Example event trigger commands for `payment_intent.succeeded`, failures, and cancellation-like scenarios.
+// Config holds the application's configuration.
+type Config struct {
+	// ... other config fields
+	StripeAPIKey       string `envconfig:"STRIPE_API_KEY" required:"true"`
+	StripeWebhookSecret string `envconfig:"STRIPE_WEBHOOK_SECRET" required:"true"`
+}
 
-### Stripe demo documentation
-
-Add `docs/stripe-demo.md` focused on proving the integration works.
-
-Suggested sections:
-
-- Local Docker Compose flow.
-- Kubernetes flow.
-- How to forward webhooks with Stripe CLI.
-- How to trigger test events.
-- Expected request path and status transitions inside the gateway.
-- Common troubleshooting issues: invalid webhook signature, missing metadata, idempotency mismatch, unknown event type.
-
-### Stripe-aware load generator
-
-Extend `demo/loadgenerator` so it can exercise both mock-provider and Stripe-provider modes.
-
-Suggested scenarios:
-
-- Create payment only.
-- Create payment plus successful webhook completion.
-- Create payment plus failure event.
-- Burst traffic to validate observability and idempotency.
-
-### Stripe demo frontend
-
-The demo frontend should show Stripe-backed flows without becoming provider-specific in architecture.
-
-Suggested capabilities:
-
-- Create a payment using the gateway API.
-- Show pending/processing/completed/failed state changes.
-- Display transaction/provider reference for demo purposes if exposed by the API.
-- Include a small section documenting how webhook completion is simulated or triggered.
-
-## PR plan
-
-### PR 1 — Add Stripe demo pack
-
-Goal: make Stripe setup repeatable for local and cluster demos.
-
-Tasks:
-
-- Create `extras/stripe-sandbox/README.md`.
-- Add example environment variable files.
-- Add Stripe CLI commands for forwarding and triggering events.
-- Keep everything optional and outside the core runtime.
-
-Definition of done:
-
-- A contributor can configure Stripe sandbox support from docs without reading source code.
-
-### PR 2 — Add Stripe demo docs
-
-Goal: explain how to prove the gateway works with Stripe end to end.
-
-Tasks:
-
-- Create `docs/stripe-demo.md`.
-- Document expected flow from payment creation to webhook-driven completion.
-- Add troubleshooting notes and common failure modes.
-
-Definition of done:
-
-- Someone can run the demo and validate success/failure flows step by step.
-
-### PR 3 — Extend load generator for Stripe mode
-
-Goal: generate demo traffic that exercises a real provider path.
-
-Tasks:
-
-- Add mode selection for mock versus Stripe demos.
-- Generate realistic idempotency keys.
-- Add helper scripts or docs for webhook event triggering.
-- Keep the generator useful even when Stripe is not configured.
-
-Definition of done:
-
-- Demo traffic can show real provider-backed lifecycle updates in dashboards and logs.
-
-### PR 4 — Update demo frontend and README story
-
-Goal: reflect Stripe as the first real provider proof point.
-
-Tasks:
-
-- Update the demo frontend scope to show provider-backed state changes.
-- Update project README or demo docs to explain the Stripe-backed POV story.
-- Keep the architectural message clear: Stripe is a demo provider, not the domain model.
-
-Definition of done:
-
-- The project tells a clear story: platform demo plus real PSP validation.
-
-## Copilot prompts
-
-### Prompt A — Stripe demo pack
-
-```md
-Create an `extras/stripe-sandbox` package for the payment gateway platform demo.
-
-Tasks:
-1. Add README, env examples, and Stripe CLI commands.
-2. Cover local Docker Compose and Kubernetes usage.
-3. Keep Stripe setup optional and outside the core runtime.
-4. Optimize for demo repeatability.
-
-Output:
-- folder contents
-- files to create
-- setup flow
-- validation steps
+// FromEnv loads the configuration from environment variables.
+func FromEnv() (*Config, error) {
+	var cfg Config
+	err := envconfig.Process("", &cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
 ```
 
-### Prompt B — Stripe demo docs
+## 4. Stripe Client
 
-```md
-Create `docs/stripe-demo.md` for the payment gateway.
+The Stripe client is responsible for all communication with the Stripe API. Here's how to set it up:
 
-Tasks:
-1. Document end-to-end Stripe demo flow.
-2. Explain how to forward webhooks with Stripe CLI.
-3. Show how to trigger success and failure events.
-4. Add troubleshooting for signature, metadata, and idempotency issues.
+### 4.1. Client Initialization
 
-Output:
-- doc outline
-- commands to include
-- expected results
+Create a new file `internal/provider/stripe/client.go` to initialize the Stripe client. This file should include a function that returns a new Stripe client instance:
+
+```go
+package stripe
+
+import (
+	"github.com/stripe/stripe-go/v72"
+	"github.com/stripe/stripe-go/v72/client"
+)
+
+// NewClient creates a new Stripe client.
+func NewClient(apiKey string) *client.API {
+	return client.New(apiKey, nil)
+}
 ```
 
-### Prompt C — Stripe-aware load generator
+### 4.2. Integrating the Client
 
-```md
-Extend the payment gateway load generator to support Stripe demo mode.
+In your `main.go` file, initialize the Stripe client and pass it to your payment service:
 
-Tasks:
-1. Add provider mode selection: mock or Stripe.
-2. Generate payment creation traffic with realistic idempotency keys.
-3. Document webhook replay or Stripe CLI trigger usage.
-4. Keep the generator runnable in Kubernetes.
+```go
+package main
 
-Output:
-- runtime flags
-- request patterns
-- demo scenarios
-- test plan
+import (
+	// ... other imports
+	"github.com/user/project-payment-gateway/internal/platform/config"
+	"github.com/user/project-payment-gateway/internal/provider/stripe"
+)
+
+func main() {
+	// ... other setup
+	cfg, err := config.FromEnv()
+	if err != nil {
+		// ... handle error
+	}
+
+	stripeClient := stripe.NewClient(cfg.StripeAPIKey)
+	// ... pass stripeClient to your payment service
+}
 ```
 
-### Prompt D — Demo story update
+## 5. Payment Intent Handling
 
-```md
-Update the payment gateway demo story so Stripe is the first real provider proof point.
+Stripe's Payment Intents API is used to manage the lifecycle of a payment. Here's how to integrate it into your payment service:
 
-Tasks:
-1. Update README/demo docs to explain the flow.
-2. Keep the domain model provider-agnostic.
-3. Highlight Bank of Anthos-inspired packaging and demo enablement.
-4. Make the POV easy for stakeholders to understand.
+### 5.1. Creating a Payment Intent
 
-Output:
-- wording changes
-- affected files
-- diagram suggestions
+In your `internal/application/payment/service.go` file, add a method to create a new payment intent:
+
+```go
+package payment
+
+import (
+	// ... other imports
+	"github.com/stripe/stripe-go/v72"
+	"github.com/stripe/stripe-go/v72/paymentintent"
+)
+
+// ... PaymentService struct
+
+// CreatePaymentIntent creates a new Stripe Payment Intent.
+func (s *PaymentService) CreatePaymentIntent(amount int64, currency string) (*stripe.PaymentIntent, error) {
+	params := &stripe.PaymentIntentParams{
+		Amount:   stripe.Int64(amount),
+		Currency: stripe.String(currency),
+	}
+
+	pi, err := paymentintent.New(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return pi, nil
+}
 ```
 
-## Acceptance checklist
+### 5.2. Handling the Payment in Your Handler
 
-This integration track is successful when these statements are true:
+In your `internal/transport/http/handlers/payment.go` file, call the `CreatePaymentIntent` method and return the client secret to the client:
 
-- Stripe is documented as the first real provider demo path.
-- Stripe setup is packaged under `extras/` and docs, not scattered through the repo.
-- A contributor can run a local Stripe demo using Stripe CLI webhook forwarding.
-- The load generator and/or demo frontend can show a provider-backed payment lifecycle.
-- The core payment gateway remains provider-agnostic.
+```go
+package handlers
+
+import (
+	// ... other imports
+	"net/http"
+)
+
+// ... PaymentHandler struct
+
+// CreatePayment handles the creation of a new payment.
+func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
+	// ... parse request body
+	pi, err := h.paymentService.CreatePaymentIntent(req.Amount, req.Currency)
+	if err != nil {
+		// ... handle error
+		return
+	}
+
+	// ... return client secret to the client
+}
+```
+
+## 6. Webhook Integration
+
+Webhooks are essential for receiving real-time updates from Stripe about the status of a payment. Here's how to set up a webhook handler:
+
+### 6.1. Webhook Handler
+
+Create a new file `internal/provider/stripe/webhook.go` to handle incoming webhooks:
+
+```go
+package stripe
+
+import (
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+
+	"github.com/stripe/stripe-go/v72"
+	"github.com/stripe/stripe-go/v72/webhook"
+)
+
+// HandleWebhook handles incoming Stripe webhooks.
+func HandleWebhook(w http.ResponseWriter, r *http.Request, webhookSecret string) {
+	const MaxBodyBytes = int64(65536)
+	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
+	payload, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		// ... handle error
+		return
+	}
+
+	event, err := webhook.ConstructEvent(payload, r.Header.Get("Stripe-Signature"), webhookSecret)
+	if err != nil {
+		// ... handle error
+		return
+	}
+
+	switch event.Type {
+	case "payment_intent.succeeded":
+		var paymentIntent stripe.PaymentIntent
+		err := json.Unmarshal(event.Data.Raw, &paymentIntent)
+		if err != nil {
+			// ... handle error
+			return
+		}
+		// ... handle successful payment
+	case "payment_intent.payment_failed":
+		var paymentIntent stripe.PaymentIntent
+		err := json.Unmarshal(event.Data.Raw, &paymentIntent)
+		if err != nil {
+			// ... handle error
+			return
+		}
+		// ... handle failed payment
+	default:
+		// ... handle other event types
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+```
+
+### 6.2. Adding the Webhook Route
+
+In your `internal/transport/http/router.go` file, add a new route for the webhook handler:
+
+```go
+package http
+
+import (
+	// ... other imports
+	"github.com/user/project-payment-gateway/internal/provider/stripe"
+)
+
+// ... other routes
+
+// Webhook route
+router.HandleFunc("/webhooks/stripe", func(w http.ResponseWriter, r *http.Request) {
+	stripe.HandleWebhook(w, r, cfg.StripeWebhookSecret)
+}).Methods("POST")
+```
+
+## 7. Testing
+
+Thoroughly testing your Stripe integration is crucial to ensure it's working correctly. Here are some testing strategies:
+
+### 7.1. Unit Tests
+
+Write unit tests for your payment service and webhook handler. Use a mock Stripe client to simulate API calls and test different scenarios.
+
+### 7.2. Integration Tests
+
+Write integration tests to verify the end-to-end payment flow. Use Stripe's test API keys and test payment methods to simulate real payments.
+
+### 7.3. End-to-End Tests
+
+Use a tool like Cypress or Playwright to write end-to-end tests that simulate a user making a payment through your application.
+
+## 8. Conclusion
+
+By following this guide, you can successfully integrate Stripe into your `project-payment-gateway` and create a robust and secure payment processing solution. Remember to always follow best practices for security and maintainability, and to thoroughly test your integration before deploying to production.
+

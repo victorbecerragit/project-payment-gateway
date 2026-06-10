@@ -15,7 +15,7 @@ The demonstration uses the gateway's generic API and underlying Stripe provider 
 
 ## Local Configuration (Docker Compose)
 
-1. Follow the local setup steps in `extras/stripe-sandbox/README.md` to configure `.env`.
+1. Follow the local setup steps in `extras/stripe-sandbox/README.md` to configure the root `.env` file (copied from the sandbox example).
 2. Start the payment gateway using `docker-compose up --build`.
 3. In a separate terminal, run the Stripe CLI forwarder:
    ```bash

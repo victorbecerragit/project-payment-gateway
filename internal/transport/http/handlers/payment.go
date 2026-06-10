@@ -85,11 +85,15 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	// Check for webhook signature as required by OpenAPI
-	signature := r.Header.Get("X-Webhook-Signature")
+	// Check for webhook signature as required by OpenAPI (Stripe uses Stripe-Signature)
+	signature := r.Header.Get("Stripe-Signature")
+	if signature == "" {
+		signature = r.Header.Get("X-Webhook-Signature")
+	}
+
 	if signature == "" {
 		slogext.Ctx(r.Context()).Warn("webhook received without signature")
-		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "X-Webhook-Signature header is required")
+		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "Webhook signature header is required")
 		return
 	}
 
@@ -101,24 +105,17 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Verify Signature
-	if err := h.verifier.Verify(r.Context(), body, signature); err != nil {
-		slogext.Ctx(r.Context()).Warn("invalid webhook signature", "signature", signature, "error", err)
-		response.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", "Invalid webhook signature")
-		return
-	}
-
-	// 2. Decode DTO
-	var payload dto.WebhookPayload
 	start := time.Now()
-	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&payload); err != nil {
-		slogext.Ctx(r.Context()).Error("invalid webhook payload format", "error", err, "payload", string(body))
-		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Invalid webhook payload")
+
+	// 1 & 2. Parse and verify webhook payload via service provider delegation
+	event, err := h.service.ParseWebhook(r.Context(), body, signature)
+	if err != nil {
+		slogext.Ctx(r.Context()).Warn("invalid webhook payload or signature", "signature", signature, "error", err)
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "Invalid webhook payload or signature")
 		return
 	}
 
-	// 3. Map to Domain Event and Process
-	event := mapper.ToPaymentEvent(&payload)
+	// 3. Process Domain Event
 	slogext.Ctx(r.Context()).Info("processing webhook event", "event_type", event.Type, "payment_id", event.PaymentID, "transaction_id", event.TransactionID)
 
 	if err := h.service.ProcessEvent(r.Context(), event); err != nil {

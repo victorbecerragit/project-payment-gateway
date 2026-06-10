@@ -9,12 +9,12 @@ This directory provides the necessary configuration and commands to test the Pay
 
 ## Local Development
 
-1. Copy `.env.example` to `.env`:
+1. Copy `.env.example` to the root project directory as `.env`:
    ```bash
-   cp .env.example .env
+   cp extras/stripe-sandbox/.env.example .env
    ```
 
-2. Generate your Stripe API key from the Stripe Dashboard (Test Mode -> Developers -> API Keys) and add it to `.env` as `STRIPE_API_KEY`.
+2. Generate your Stripe API key from the Stripe Dashboard (Test Mode -> Developers -> API Keys) and add it to the root `.env` as `STRIPE_API_KEY`.
 
 3. Start listening for Stripe webhooks locally:
    ```bash
