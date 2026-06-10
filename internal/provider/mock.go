@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 )
@@ -61,16 +62,34 @@ func (m *MockProvider) ParseWebhook(ctx context.Context, payload []byte, signatu
 	_, span := m.tracer.StartSpan(ctx, "mock.ParseWebhook")
 	defer span.End()
 
-	// In a real provider, unmarshal provider-specific payload here and verify signature
-	// For now, just acknowledge the webhook
+	var parsed struct {
+		EventType     string `json:"event_type"`
+		PaymentID     string `json:"payment_id"`
+		TransactionID string `json:"transaction_id"`
+	}
+
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		return nil, &ErrProviderError{
+			Provider: m.Name(),
+			Message:  "invalid webhook payload",
+			Code:     "invalid_payload",
+		}
+	}
+
+	if parsed.EventType == "" {
+		parsed.EventType = "payment.completed"
+	}
+
 	span.SetAttribute("webhook.signature", signature)
 	span.SetAttribute("webhook.payload", string(payload))
 	return &WebhookEvent{
-		EventType:         "payment.completed",
+		EventType:         parsed.EventType,
+		PaymentID:         parsed.PaymentID,
+		TransactionID:     parsed.TransactionID,
 		ProviderEventType: "charge.succeeded",
 		Status:            "succeeded",
 		ProviderData: map[string]interface{}{
-			"provider": "mock",
+			"provider":     "mock",
 			"payload_size": len(payload),
 		},
 	}, nil

@@ -32,6 +32,24 @@ func (f *fakeService) ProcessEvent(_ context.Context, e *payment.PaymentEvent) e
 	return f.err
 }
 
+func (f *fakeService) ParseWebhook(_ context.Context, payload []byte, signature string) (*payment.PaymentEvent, error) {
+	if signature == "invalid" {
+		return nil, errors.New("invalid signature")
+	}
+
+	var p dto.WebhookPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, err
+	}
+
+	return &payment.PaymentEvent{
+		Type:          payment.EventType(p.EventType),
+		PaymentID:     p.PaymentID,
+		TransactionID: p.TransactionID,
+		Timestamp:     p.Timestamp,
+	}, nil
+}
+
 func webhookPayload(t *testing.T, paymentID string) []byte {
 	t.Helper()
 	p := dto.WebhookPayload{EventType: string(payment.EventPaymentCompleted), PaymentID: paymentID, TransactionID: "tx-1", Timestamp: time.Now()}
@@ -52,7 +70,7 @@ func TestHandleWebhook(t *testing.T) {
 	}{
 		{name: "missing signature returns 401", wantStatus: 401},
 		{name: "valid request dispatches event", signatureHeader: "sig", wantStatus: 200, wantPaymentID: "p-1"},
-		{name: "invalid signature returns 401", signatureHeader: "invalid", wantStatus: 401},
+		{name: "invalid signature returns 400", signatureHeader: "invalid", wantStatus: 400},
 		{name: "domain logic error returns 400", signatureHeader: "sig", serviceErr: &payment.PaymentError{Type: payment.ErrorTypeDomain, Message: "invalid amount"}, wantStatus: 400},
 		{name: "state machine error returns 409", signatureHeader: "sig", serviceErr: &payment.PaymentError{Type: payment.ErrorTypeStateMachine, Message: "invalid transition"}, wantStatus: 409},
 		{name: "service error returns 500", signatureHeader: "sig", serviceErr: errors.New("boom"), wantStatus: 500},

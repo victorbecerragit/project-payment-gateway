@@ -10,8 +10,7 @@ type Service interface {
 	CreatePayment(ctx context.Context, p *Payment) error
 	GetPayment(ctx context.Context, id string) (*Payment, error)
 	ProcessEvent(ctx context.Context, e *PaymentEvent) error
-}
-
+	ParseWebhook(ctx context.Context, payload []byte, signature string) (*PaymentEvent, error)}
 // ErrPaymentNotFound is returned when a payment cannot be found in the repository.
 var ErrPaymentNotFound = errors.New("payment not found")
 

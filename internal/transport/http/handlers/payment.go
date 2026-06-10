@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -44,7 +43,12 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := mapper.ToPaymentDomain(&req, idempotencyKey)
+	p, err := mapper.ToPaymentDomain(&req, idempotencyKey)
+	if err != nil {
+		slogext.Ctx(r.Context()).Warn("invalid create payment input", "error", err)
+		response.RespondWithError(w, http.StatusBadRequest, "Bad Request", err.Error())
+		return
+	}
 
 	if err := h.service.CreatePayment(r.Context(), p); err != nil { // Pass r.Context() to service
 		h.handleServiceError(w, r.Context(), err) // Pass r.Context() to error handler
