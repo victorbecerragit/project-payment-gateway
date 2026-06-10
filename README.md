@@ -1,9 +1,17 @@
 # Payment Gateway Integration with OpenAPI & Kubernetes
 ## A DevOps/SRE Quick Start Guide
 
-A production-ready payment gateway service built with Go, featuring OpenAPI specification, Docker containerization, and Kubernetes deployment manifests.
+A production-ready payment gateway service built with Go, featuring OpenAPI specification, Docker containerization, and Kubernetes deployment manifests. 
 
-Based on guides from https://github.com/Labs64/labs64.io-payment-gateway
+Based on guides from https://github.com/Labs64/labs64.io-payment-gateway and inspired by Google's **Bank of Anthos** for its packaging, deployment, and platform-demo structure.
+
+## The Demo Story: Mock vs Stripe
+
+This generic generic payment gateway serves as a proof of value (POV) for how payment integrations should operate. While the core application code is strictly **provider-agnostic**, it features two built-in demo paths:
+1. **Mock End-to-End**: Test internal routing, endpoints, and deployment without external dependencies.
+2. **Stripe Demo Track**: A real-world validation path showing how a public `PaymentIntent` webhook updates localized payment states. Setting up Stripe is completely optional and isolated in the `extras/stripe-sandbox` package.
+
+See the [Stripe Demo Guide](docs/stripe-demo.md) for how to run the end-to-end flow with a real provider, or use our [Load Generator](demo/loadgenerator/README.md) to generate traffic.
 
 ## Table of Contents
 
