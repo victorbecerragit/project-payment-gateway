@@ -295,6 +295,41 @@ func nullString(s string) *string {
 	return &s
 }
 
+func (r *repository) ListPayments(ctx context.Context, f payment.ListFilter) ([]*payment.Payment, error) {
+	ctx, span := r.tracer.StartSpan(ctx, "postgres.ListPayments")
+	defer span.End()
+
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var rows pgx.Rows
+	var err error
+	query := fmt.Sprintf("SELECT %s FROM payments", paymentFields)
+	if f.Status != "" {
+		query += " WHERE status = $1 ORDER BY created_at DESC LIMIT $2"
+		rows, err = r.db.Query(ctx, query, f.Status, limit)
+	} else {
+		query += " ORDER BY created_at DESC LIMIT $1"
+		rows, err = r.db.Query(ctx, query, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list payments: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*payment.Payment
+	for rows.Next() {
+		p, scanErr := r.scanRow(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		result = append(result, p)
+	}
+	return result, rows.Err()
+}
+
 // Close closes the underlying database connection pool.
 func (r *repository) Close() {
 	if r.db != nil {

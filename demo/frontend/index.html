@@ -65,6 +65,26 @@
     .log-ok    { color: #4ade80; }
     .log-warn  { color: #fbbf24; }
     .log-error { color: #f87171; }
+    .log-command {
+      color: #fde68a;
+      background: rgba(251, 191, 36, 0.08);
+      border-left: 3px solid #fbbf24;
+      padding-left: 0.5rem;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .log-command-label {
+      display: block;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #fbbf24;
+      margin-bottom: 0.25rem;
+    }
+    .log-command-code {
+      font-family: monospace;
+      color: #f8fafc;
+    }
 
     .error-msg { color: #f87171; font-size: 0.8rem; margin-top: 0.5rem; display: none; }
     #poll-indicator { font-size: 0.7rem; color: #475569; text-align: right; margin-top: 0.5rem; }
@@ -190,6 +210,18 @@
       el.scrollTop = el.scrollHeight;
     }
 
+    function logStripeCommand(paymentId) {
+      const command = `stripe trigger payment_intent.succeeded --override "payment_intent:metadata[payment_id]=${paymentId}"`;
+      const el = document.getElementById('log');
+      const ts = new Date().toLocaleTimeString();
+      el.innerHTML += `
+        <div class="log-command">[${ts}]
+          <span class="log-command-label">Stripe command</span>
+          <span class="log-command-code">${command}</span>
+        </div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
     function badgeHtml(status) {
       const cls = ['pending','processing','completed','failed','cancelled'].includes(status)
         ? `badge-${status}` : 'badge-unknown';
@@ -240,6 +272,39 @@
       document.getElementById('m-failed').textContent = counts.failed;
     }
 
+    async function loadTransactionsByStatus(status, limit = 10) {
+      const res = await fetch(`${BASE_URL}/api/v1/payments?status=${encodeURIComponent(status)}&limit=${limit}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const list = await res.json();
+      if (!Array.isArray(list)) {
+        throw new Error('invalid response shape');
+      }
+      return list;
+    }
+
+    async function loadInitialTransactions() {
+      try {
+        const [completed, pending, failed] = await Promise.all([
+          loadTransactionsByStatus('completed', 10),
+          loadTransactionsByStatus('pending', 10),
+          loadTransactionsByStatus('failed', 10)
+        ]);
+
+        [...completed, ...pending, ...failed].forEach(p => {
+          payments[p.payment_id] = { ...p, _justUpdated: false };
+        });
+
+        persist();
+        renderPayments();
+        updateMetrics();
+        log(`Loaded ${completed.length} completed, ${pending.length} pending, and ${failed.length} failed payments from API.`, 'ok');
+      } catch (e) {
+        log(`Could not preload completed/pending/failed payments: ${e.message}`, 'warn');
+      }
+    }
+
     async function createPayment() {
       const btn = document.getElementById('create-btn');
       const errEl = document.getElementById('create-error');
@@ -270,7 +335,7 @@
         } else {
           payments[data.payment_id] = { ...data, _justUpdated: true };
           log(`✓ Created ${data.payment_id}  status=${data.status}  pi=${data.transaction_id}`, 'ok');
-          log(`  ↳ Run: stripe trigger payment_intent.succeeded --override "payment_intent:metadata[payment_id]=${data.payment_id}"`, 'warn');
+          logStripeCommand(data.payment_id);
           persist();
           renderPayments();
           updateMetrics();
@@ -316,6 +381,7 @@
     log(`Frontend started. Gateway: ${BASE_URL}` + (restoredCount ? `  · Restored ${restoredCount} payments from last session` : ''));
     renderPayments();
     updateMetrics();
+    loadInitialTransactions();
   </script>
 </body>
 </html>

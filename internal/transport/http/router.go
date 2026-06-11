@@ -27,6 +27,7 @@ func SetupRoutes(mux *http.ServeMux, p *handlers.PaymentHandler, h *handlers.Hea
 
 	// Payment routes
 	mux.Handle("POST /api/v1/payments", apiLimiter.Handler("/api/v1/payments", m.MetricsMiddleware("/api/v1/payments", http.HandlerFunc(p.CreatePayment))))
+	mux.Handle("GET /api/v1/payments", apiLimiter.Handler("/api/v1/payments", m.MetricsMiddleware("/api/v1/payments", http.HandlerFunc(p.ListPayments))))
 	mux.Handle("GET /api/v1/payments/{payment_id}", apiLimiter.Handler("/api/v1/payments/{payment_id}", m.MetricsMiddleware("/api/v1/payments/{payment_id}", http.HandlerFunc(p.GetPayment))))
 
 	// Webhook routes use a more permissive limiter to handle bursts from providers

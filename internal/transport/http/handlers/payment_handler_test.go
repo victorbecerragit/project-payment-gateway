@@ -17,6 +17,7 @@ import (
 type fakeService struct {
 	received *payment.PaymentEvent
 	err      error
+	list     []*payment.Payment
 }
 
 func (f *fakeService) CreatePayment(_ context.Context, _ *payment.Payment) error { return f.err }
@@ -30,6 +31,13 @@ func (f *fakeService) GetPayment(_ context.Context, paymentID string) (*payment.
 func (f *fakeService) ProcessEvent(_ context.Context, e *payment.PaymentEvent) error {
 	f.received = e
 	return f.err
+}
+
+func (f *fakeService) ListPayments(_ context.Context, _ payment.ListFilter) ([]*payment.Payment, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.list, nil
 }
 
 func (f *fakeService) ParseWebhook(_ context.Context, payload []byte, signature string) (*payment.PaymentEvent, error) {
@@ -145,6 +153,79 @@ func TestGetPayment(t *testing.T) {
 	// This handler is covered by integration_test.go which tests through the actual router.
 	// TODO: Refactor this to use httptest.NewServer with the real router for proper testing.
 	t.Skip("Go 1.22+ mux path value testing requires router integration - see integration_test.go")
+}
+
+func TestListPayments(t *testing.T) {
+	tests := []struct {
+		name       string
+		url        string
+		serviceErr error
+		list       []*payment.Payment
+		wantStatus int
+		wantItems  int
+	}{
+		{
+			name:       "invalid status returns 400",
+			url:        "/api/v1/payments?status=unknown",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid limit format returns 400",
+			url:        "/api/v1/payments?limit=abc",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit below min returns 400",
+			url:        "/api/v1/payments?limit=0",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "limit above max returns 400",
+			url:        "/api/v1/payments?limit=201",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "service failure returns 500",
+			url:        "/api/v1/payments?status=pending&limit=10",
+			serviceErr: errors.New("boom"),
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name: "valid request returns list",
+			url:  "/api/v1/payments?status=pending&limit=10",
+			list: []*payment.Payment{
+				{ID: "pay_1", Status: payment.StatusPending, Amount: payment.MustNewAmount(10), Currency: payment.Currency("USD"), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), CustomerID: payment.MustNewCustomerID("cust_1")},
+				{ID: "pay_2", Status: payment.StatusPending, Amount: payment.MustNewAmount(20), Currency: payment.Currency("USD"), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), CustomerID: payment.MustNewCustomerID("cust_2")},
+			},
+			wantStatus: http.StatusOK,
+			wantItems:  2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &fakeService{err: tc.serviceErr, list: tc.list}
+			h := NewPaymentHandler(svc, nil)
+
+			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
+			rr := httptest.NewRecorder()
+			h.ListPayments(rr, req)
+
+			if rr.Code != tc.wantStatus {
+				t.Fatalf("status: want %d got %d", tc.wantStatus, rr.Code)
+			}
+
+			if tc.wantStatus == http.StatusOK {
+				var got []dto.PaymentResponse
+				if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+					t.Fatalf("decode list response: %v", err)
+				}
+				if len(got) != tc.wantItems {
+					t.Fatalf("items: want %d got %d", tc.wantItems, len(got))
+				}
+			}
+		})
+	}
 }
 
 type mockVerifier struct{}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
@@ -59,6 +60,45 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 
 	slogext.Ctx(r.Context()).Info("payment created successfully", "payment_id", p.ID, "status", p.Status, "duration_ms", time.Since(start).Milliseconds())
 	response.RespondWithJSON(w, http.StatusCreated, resp)
+}
+
+func (h *PaymentHandler) ListPayments(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	if status != "" {
+		switch payment.Status(status) {
+		case payment.StatusPending, payment.StatusProcessing, payment.StatusCompleted, payment.StatusFailed, payment.StatusCancelled:
+		default:
+			response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "invalid status query parameter")
+			return
+		}
+	}
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		n, err := strconv.Atoi(l)
+		if err != nil {
+			response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "invalid limit query parameter")
+			return
+		}
+		if n < 1 || n > 200 {
+			response.RespondWithError(w, http.StatusBadRequest, "Bad Request", "limit must be between 1 and 200")
+			return
+		}
+		limit = n
+	}
+
+	payments, err := h.service.ListPayments(r.Context(), payment.ListFilter{Status: status, Limit: limit})
+	if err != nil {
+		slogext.Ctx(r.Context()).Error("failed to list payments", "error", err)
+		response.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err.Error())
+		return
+	}
+
+	resp := make([]*dto.PaymentResponse, len(payments))
+	for i, p := range payments {
+		resp[i] = mapper.ToPaymentResponse(p)
+	}
+	response.RespondWithJSON(w, http.StatusOK, resp)
 }
 
 func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {

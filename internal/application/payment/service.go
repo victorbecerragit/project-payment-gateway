@@ -15,9 +15,9 @@ import (
 type Service interface {
 	CreatePayment(ctx context.Context, p *payment.Payment) error
 	GetPayment(ctx context.Context, paymentID string) (*payment.Payment, error)
+	ListPayments(ctx context.Context, f payment.ListFilter) ([]*payment.Payment, error)
 	ProcessEvent(ctx context.Context, e *payment.PaymentEvent) error
 	ParseWebhook(ctx context.Context, payload []byte, signature string) (*payment.PaymentEvent, error)
-	// No SetLogger needed, use slogext.Ctx(ctx)
 }
 
 type service struct {
@@ -100,6 +100,10 @@ func (s *service) GetPayment(ctx context.Context, paymentID string) (*payment.Pa
 	defer span.End()
 	span.SetAttribute("payment.id", paymentID)
 	return s.repo.GetByID(ctx, paymentID)
+}
+
+func (s *service) ListPayments(ctx context.Context, f payment.ListFilter) ([]*payment.Payment, error) {
+	return s.repo.ListPayments(ctx, f)
 }
 
 func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) error {

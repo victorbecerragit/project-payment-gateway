@@ -66,6 +66,39 @@ func (r *repository) GetByIdempotencyKey(ctx context.Context, key string) (*paym
 	return nil, nil
 }
 
+func (r *repository) ListPayments(ctx context.Context, f payment.ListFilter) ([]*payment.Payment, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	result := make([]*payment.Payment, 0, len(r.payments))
+	for _, p := range r.payments {
+		if f.Status != "" && string(p.Status) != f.Status {
+			continue
+		}
+		cp := *p
+		result = append(result, &cp)
+	}
+
+	// Sort descending by CreatedAt
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].CreatedAt.After(result[i].CreatedAt) {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	return result, nil
+}
+
 func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (*payment.Payment, error) {
 	_, span := r.tracer.StartSpan(ctx, "inmemory.GetByProviderRef")
 	defer span.End()

@@ -87,6 +87,44 @@ paths:
                     example: '2024-01-15T10:00:00Z'
 
   /api/v1/payments:
+    get:
+      tags:
+        - payments
+      summary: List payments
+      description: Retrieve a list of payments, optionally filtered by status
+      operationId: listPayments
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter by payment status
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed, cancelled]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of results (default 50, max 200)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       tags:
         - payments
@@ -272,6 +310,11 @@ components:
           format: date-time
           description: Payment creation timestamp
           example: '2024-01-15T10:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Last status update timestamp
+          example: '2024-01-15T10:05:00Z'
 
     PaymentStatus:
       type: object
