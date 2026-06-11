@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Gateway Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+    h1 { font-size: 1.4rem; font-weight: 700; color: #f8fafc; margin-bottom: 0.25rem; }
+    .subtitle { color: #64748b; font-size: 0.85rem; margin-bottom: 2rem; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.25rem; }
+    .card h2 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+
+    label { font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 0.25rem; }
+    input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 0.375rem; padding: 0.5rem 0.75rem; color: #f8fafc; font-size: 0.875rem; margin-bottom: 0.75rem; }
+    input:focus { outline: none; border-color: #6366f1; }
+
+    button { width: 100%; padding: 0.6rem 1rem; border: none; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #6366f1; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-danger  { background: #ef4444; color: white; }
+    .btn-sm { width: auto; padding: 0.3rem 0.75rem; font-size: 0.75rem; margin-left: 0.5rem; }
+
+    /* Status badge */
+    .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-pending    { background: #1e3a5f; color: #60a5fa; }
+    .badge-processing { background: #3b2a00; color: #fbbf24; animation: pulse 1s infinite; }
+    .badge-completed  { background: #14532d; color: #4ade80; }
+    .badge-failed     { background: #450a0a; color: #f87171; }
+    .badge-cancelled  { background: #1c1917; color: #a8a29e; }
+    .badge-unknown    { background: #1e293b; color: #64748b; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* Payment list */
+    .payment-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid #1e293b; font-size: 0.8rem; }
+    .payment-row:last-child { border-bottom: none; }
+    .payment-id { font-family: monospace; color: #94a3b8; font-size: 0.75rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .payment-amount { color: #f8fafc; font-weight: 600; min-width: 5rem; text-align: right; }
+    .payment-meta { color: #475569; font-size: 0.7rem; }
+    .payment-updated { color: #475569; font-size: 0.7rem; min-width: 5rem; text-align: right; }
+
+    /* Status transition animation */
+    .payment-row.just-updated { animation: highlight 2s ease-out; }
+    @keyframes highlight { 0% { background: #1e3a20; } 100% { background: transparent; } }
+
+    /* Metrics bar */
+    .metrics { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .metric { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.75rem 1rem; flex: 1; min-width: 6rem; text-align: center; }
+    .metric-value { font-size: 1.5rem; font-weight: 700; color: #f8fafc; }
+    .metric-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-pending   .metric-value { color: #60a5fa; }
+    .metric-completed .metric-value { color: #4ade80; }
+    .metric-failed    .metric-value { color: #f87171; }
+
+    /* Log panel */
+    #log { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.72rem; height: 200px; overflow-y: auto; }
+    .log-info  { color: #94a3b8; }
+    .log-ok    { color: #4ade80; }
+    .log-warn  { color: #fbbf24; }
+    .log-error { color: #f87171; }
+
+    .error-msg { color: #f87171; font-size: 0.8rem; margin-top: 0.5rem; display: none; }
+    #poll-indicator { font-size: 0.7rem; color: #475569; text-align: right; margin-top: 0.5rem; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; margin-right: 4px; animation: blink 2s infinite; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+  </style>
+</head>
+<body>
+  <h1>⚡ Payment Gateway Demo</h1>
+  <p class="subtitle">Stripe sandbox · Real-time status tracking · <span id="base-url-label"></span></p>
+
+  <div class="grid">
+    <!-- Create Payment -->
+    <div class="card">
+      <h2>Create Payment</h2>
+      <label>Amount (USD)</label>
+      <input id="amount" type="number" value="99.99" step="0.01" min="0.01">
+      <label>Customer ID</label>
+      <input id="customer" type="text" value="cust_demo">
+      <label>Description</label>
+      <input id="desc" type="text" value="Stripe demo payment">
+      <button class="btn-primary" id="create-btn" onclick="createPayment()">Create Payment</button>
+      <div class="error-msg" id="create-error"></div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="card">
+      <h2>Live Metrics</h2>
+      <div class="metrics">
+        <div class="metric metric-pending">
+          <div class="metric-value" id="m-pending">0</div>
+          <div class="metric-label">Pending</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="m-processing" style="color:#fbbf24">0</div>
+          <div class="metric-label">Processing</div>
+        </div>
+        <div class="metric metric-completed">
+          <div class="metric-value" id="m-completed">0</div>
+          <div class="metric-label">Completed</div>
+        </div>
+        <div class="metric metric-failed">
+          <div class="metric-value" id="m-failed">0</div>
+          <div class="metric-label">Failed</div>
+        </div>
+      </div>
+      <div id="poll-indicator"><span class="dot"></span>Polling every 2s</div>
+    </div>
+
+    <!-- Payment list -->
+    <div class="card" style="grid-column: 1 / -1;">
+      <h2>Payments <span style="color:#475569;font-weight:400;font-size:0.75rem;">(most recent first · auto-refreshed)</span></h2>
+      <div id="payments-list"><p style="color:#475569;font-size:0.8rem;">No payments yet. Create one above.</p></div>
+    </div>
+
+    <!-- Event log -->
+    <div class="card" style="grid-column: 1 / -1;">
+      <h2>Activity Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    const BASE_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? `http://${location.hostname}:8080`
+      : `http://${location.hostname}:8080`;
+
+    document.getElementById('base-url-label').textContent = BASE_URL;
+
+    const payments = {}; // id -> {payment_id, status, amount, currency, updated_at, transaction_id}
+
+    function log(msg, type = 'info') {
+      const el = document.getElementById('log');
+      const ts = new Date().toLocaleTimeString();
+      el.innerHTML += `<div class="log-${type}">[${ts}] ${msg}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function badgeHtml(status) {
+      const cls = ['pending','processing','completed','failed','cancelled'].includes(status)
+        ? `badge-${status}` : 'badge-unknown';
+      return `<span class="badge ${cls}">${status}</span>`;
+    }
+
+    function renderPayments() {
+      const list = Object.values(payments).sort((a, b) =>
+        new Date(b.created_at) - new Date(a.created_at));
+
+      if (list.length === 0) {
+        document.getElementById('payments-list').innerHTML =
+          '<p style="color:#475569;font-size:0.8rem;">No payments yet.</p>';
+        return;
+      }
+
+      const rows = list.map(p => `
+        <div class="payment-row ${p._justUpdated ? 'just-updated' : ''}" data-id="${p.payment_id}">
+          <span class="payment-id" title="${p.payment_id}">${p.payment_id}</span>
+          ${badgeHtml(p.status)}
+          <span class="payment-amount">$${p.amount.toFixed(2)}</span>
+          <span class="payment-meta">${p.currency} · ${p.transaction_id ? p.transaction_id.slice(0,18)+'…' : '—'}</span>
+          <span class="payment-updated">${formatAge(p.updated_at)}</span>
+        </div>`).join('');
+
+      document.getElementById('payments-list').innerHTML = rows;
+
+      // Clear just-updated flag after render
+      Object.values(payments).forEach(p => { p._justUpdated = false; });
+    }
+
+    function formatAge(ts) {
+      if (!ts) return '';
+      const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+      if (diff < 60) return `${diff}s ago`;
+      if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+      return `${Math.floor(diff/3600)}h ago`;
+    }
+
+    function updateMetrics() {
+      const counts = { pending:0, processing:0, completed:0, failed:0 };
+      Object.values(payments).forEach(p => {
+        if (p.status in counts) counts[p.status]++;
+      });
+      document.getElementById('m-pending').textContent = counts.pending;
+      document.getElementById('m-processing').textContent = counts.processing;
+      document.getElementById('m-completed').textContent = counts.completed;
+      document.getElementById('m-failed').textContent = counts.failed;
+    }
+
+    async function createPayment() {
+      const btn = document.getElementById('create-btn');
+      const errEl = document.getElementById('create-error');
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+
+      const amount = parseFloat(document.getElementById('amount').value);
+      const customer = document.getElementById('customer').value.trim();
+      const desc = document.getElementById('desc').value.trim();
+      const idem = `demo-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+      log(`POST /api/v1/payments  amount=${amount} customer=${customer}`);
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': idem },
+          body: JSON.stringify({ amount, currency: 'USD', description: desc, customer_id: customer })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          const msg = data.message || JSON.stringify(data);
+          errEl.textContent = `Error ${res.status}: ${msg}`;
+          errEl.style.display = 'block';
+          log(`✗ ${res.status} ${msg}`, 'error');
+        } else {
+          payments[data.payment_id] = { ...data, _justUpdated: true };
+          log(`✓ Created ${data.payment_id}  status=${data.status}  pi=${data.transaction_id}`, 'ok');
+          log(`  ↳ Run: stripe trigger payment_intent.succeeded --override "payment_intent:metadata[payment_id]=${data.payment_id}"`, 'warn');
+          renderPayments();
+          updateMetrics();
+        }
+      } catch (e) {
+        errEl.textContent = `Network error: ${e.message}`;
+        errEl.style.display = 'block';
+        log(`✗ Network error: ${e.message}`, 'error');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Create Payment';
+    }
+
+    async function pollPayments() {
+      const ids = Object.keys(payments);
+      // Only poll non-terminal payments
+      const active = ids.filter(id => !['completed','failed','cancelled'].includes(payments[id].status));
+
+      for (const id of active) {
+        try {
+          const res = await fetch(`${BASE_URL}/api/v1/payments/${id}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          const prev = payments[id];
+          if (prev.status !== data.status) {
+            log(`↻ ${id}  ${prev.status} → ${data.status}`, data.status === 'completed' ? 'ok' : data.status === 'failed' ? 'error' : 'warn');
+            payments[id] = { ...data, _justUpdated: true };
+          } else {
+            payments[id] = { ...data, _justUpdated: false };
+          }
+        } catch (_) {}
+      }
+
+      renderPayments();
+      updateMetrics();
+    }
+
+    // Poll every 2 seconds
+    setInterval(pollPayments, 2000);
+    log('Frontend started. Gateway: ' + BASE_URL);
+  </script>
+</body>
+</html>

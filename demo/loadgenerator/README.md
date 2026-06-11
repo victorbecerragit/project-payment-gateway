@@ -1,42 +1,46 @@
 # Payment Gateway Load Generator
 
-This directory contains scripts and tooling to generate traffic against the Payment Gateway for demo and validation purposes. It supports both `mock` scenarios and `stripe` scenarios.
+Generates traffic against the Payment Gateway for demo and validation purposes.
+
+## Scenarios
+
+| Scenario | Description | External deps |
+|----------|-------------|--------------|
+| `mock` | Creates payments using in-memory provider. No external calls. | None |
+| `stripe` | Creates real Stripe PaymentIntents. Optionally triggers webhooks. | Stripe API key |
+| `stripe-fail` | Creates payments then triggers `payment_failed` webhooks. | Stripe CLI |
+| `stress` | Rapid-fire mock payments to test rate limiting and throughput. | None |
 
 ## Usage
 
-You can run the bash load generator directly if you have `curl` and `uuidgen` installed.
-
-### Mock Mode (Default)
-Generates traffic against the mock backend provider.
 ```bash
+# Default: 5 mock payments
 ./loadgen.sh mock
+
+# Stripe happy path — creates payments only
+REQUESTS=3 ./loadgen.sh stripe
+
+# Stripe happy path — creates payments AND triggers webhooks
+TRIGGER_WEBHOOKS=true REQUESTS=3 ./loadgen.sh stripe
+
+# Stripe failure path
+REQUESTS=3 ./loadgen.sh stripe-fail
+
+# Stress test (50 requests, no delay)
+REQUESTS=50 ./loadgen.sh stress
 ```
 
-### Stripe Mode
-Generates traffic aimed at the Stripe provider implementation. Generates realistic idempotency keys required for external PSP calls.
-```bash
-./loadgen.sh stripe
-```
-
-### Environment Variables
+## Environment Variables
 
 | Variable | Default | Description |
-|---|---|---|
-| `GATEWAY_URL` | `http://localhost:8080` | URL of the Payment Gateway |
-| `CONCURRENCY` | `1` | Number of concurrent workers |
-| `REQUESTS` | `10` | Number of payment creation requests per worker |
-| `TRIGGER_WEBHOOKS` | `false` | If `true` and in `stripe` mode, attempts to trigger `payment_intent.succeeded` asynchronously via the Stripe CLI |
+|----------|---------|-------------|
+| `GATEWAY_URL` | `http://localhost:8080` | Payment gateway base URL |
+| `REQUESTS` | `5` | Number of payments to create |
+| `DELAY` | `0.5` | Seconds between requests |
+| `TRIGGER_WEBHOOKS` | `false` | Auto-trigger webhooks after creation (stripe mode only) |
 
-## Kubernetes Deployment
-To run this continuously in a cluster for dashboards:
-You can wrap `loadgen.sh` in a simple alpine container and deploy it as a Kubernetes `Job` or `Deployment` passing the appropriate `GATEWAY_URL`.
+## Prerequisites
 
-## Webhook Helper Scripts
-
-When running in `stripe` mode without `TRIGGER_WEBHOOKS=true`, the Gateway creates payments that stay in `PENDING`/`PROCESSING` states. You can use the Stripe CLI manually to push webhooks through your system to observe completed and failed interactions:
-
-```bash
-stripe trigger payment_intent.succeeded
-stripe trigger payment_intent.payment_failed
-stripe trigger payment_intent.canceled
-```
+- `curl` and `python3` must be available
+- For `stripe` and `stripe-fail` scenarios: `stripe` CLI authenticated and `stripe listen` running in a separate terminal
+- For `stripe` + `TRIGGER_WEBHOOKS=true`: `stripe listen --forward-to localhost:8080/api/v1/webhooks/payment` must be active
