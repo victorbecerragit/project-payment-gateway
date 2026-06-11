@@ -28,21 +28,34 @@ This directory provides the necessary configuration and commands to test the Pay
 
 ## Triggering Events
 
-To test the payment gateway, you can trigger Stripe events manually using the Stripe CLI:
+All trigger commands require `--override` with the `payment_id` returned by `POST /api/v1/payments`, otherwise the webhook will return `404` (payment not found in gateway).
+
+First, create a payment and capture its ID:
+```bash
+PAYMENT=$(curl -s -X POST http://localhost:8080/api/v1/payments \
+  -H "Content-Type: application/json" \
+  -H "X-Idempotency-Key: demo-$(date +%s)" \
+  -d '{"amount":99.99,"currency":"USD","description":"Stripe demo","customer_id":"cust_123"}')
+PAY_ID=$(echo $PAYMENT | python3 -c "import sys,json; print(json.load(sys.stdin)['payment_id'])")
+echo "Payment ID: $PAY_ID"
+```
 
 ### Payment Intent Succeeded
 ```bash
-stripe trigger payment_intent.succeeded
+stripe trigger payment_intent.succeeded \
+  --override "payment_intent:metadata[payment_id]=$PAY_ID"
 ```
 
 ### Payment Intent Payment Failed
 ```bash
-stripe trigger payment_intent.payment_failed
+stripe trigger payment_intent.payment_failed \
+  --override "payment_intent:metadata[payment_id]=$PAY_ID"
 ```
 
 ### Payment Intent Canceled
 ```bash
-stripe trigger payment_intent.canceled
+stripe trigger payment_intent.canceled \
+  --override "payment_intent:metadata[payment_id]=$PAY_ID"
 ```
 
 ## Kubernetes Usage

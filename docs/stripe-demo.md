@@ -10,8 +10,8 @@ The demonstration uses the gateway's generic API and underlying Stripe provider 
 1. **Create Payment**: Client calls `POST /api/v1/payments`. The gateway securely creates a Stripe `PaymentIntent` and returns a gateway Payment ID along with the pending status.
 2. **Provider Action**: The client completes the payment interaction using the Stripe frontend elements or a synthetic event is triggered via Stripe CLI.
 3. **Webhook Callback**: Stripe sends a webhook to `POST /api/v1/webhooks/payment`.
-4. **State Transition**: The gateway verifies the webhook signature, maps the Stripe event to a domain event, and idempotently updates the payment status (e.g., to `COMPLETED` or `FAILED`).
-5. **Status Verification**: Client calls `GET /api/v1/payments/status` to verify completion.
+4. **State Transition**: The gateway verifies the webhook signature, maps the Stripe event to a domain event, and idempotently updates the payment status (e.g., to `completed` or `failed`).
+5. **Status Verification**: Client calls `GET /api/v1/payments/{payment_id}` to verify completion.
 
 ## Local Configuration (Docker Compose)
 
@@ -60,47 +60,51 @@ When running in Kubernetes, ensure the webhook endpoint is either publicly reach
 ## Testing the Happy Path
 
 1. **Initiate Payment**:
-   Generate an idempotency key (e.g. `uuidgen`).
    ```bash
-   curl -X POST http://localhost:8080/api/v1/payments \
+   IDEM="demo-$(date +%s)"
+   PAYMENT=$(curl -s -X POST http://localhost:8080/api/v1/payments \
      -H "Content-Type: application/json" \
-     -H "Idempotency-Key: your-uuid-here" \
-     -d '{
-       "amount": 1000,
-       "currency": "USD",
-       "provider": "stripe",
-       "reference_id": "order_123"
-     }'
+     -H "X-Idempotency-Key: $IDEM" \
+     -d '{"amount":99.99,"currency":"USD","description":"Stripe demo","customer_id":"cust_123"}')
+   echo $PAYMENT
+   PAY_ID=$(echo $PAYMENT | python3 -c "import sys,json; print(json.load(sys.stdin)['payment_id'])")
    ```
+
 2. **Simulate Success**:
    ```bash
-   stripe trigger payment_intent.succeeded
+   stripe trigger payment_intent.succeeded \
+     --override "payment_intent:metadata[payment_id]=$PAY_ID"
    ```
+
 3. **Verify Status**:
-   Check logs or poll the gateway API to ensure the status transitioned from Pending to Completed.
+   ```bash
+   curl -s http://localhost:8080/api/v1/payments/$PAY_ID
+   ```
+   Expected: `"status": "completed"`
 
 ## Testing Failure Modes
 
 - **Simulate Payment Failure**:
   ```bash
-  stripe trigger payment_intent.payment_failed
+  stripe trigger payment_intent.payment_failed \
+    --override "payment_intent:metadata[payment_id]=$PAY_ID"
   ```
-  The gateway should transition the payment status to `FAILED`.
+  Expected: `"status": "failed"`
 
 ## Troubleshooting
 
 ### Invalid Webhook Signature
-**Symptom**: Webhook requests are rejected with a 401 or 403 status.
-**Fix**: Ensure `STRIPE_WEBHOOK_SECRET` exactly matches the secret from `stripe listen` (or the Dashboard endpoint secret) and that development environments are reloaded after setting it.
+**Symptom**: Webhook requests are rejected with `400` (bad signature) or `401` (missing header).
+**Fix**: Ensure `STRIPE_WEBHOOK_SECRET` exactly matches the secret from `stripe listen` and restart the app after updating `.env`.
 
 ### Missing Metadata or Referencing Issues
-**Symptom**: The gateway receives the webhook but cannot link it to an existing payment.
-**Fix**: Ensure the `POST /api/v1/payments` implementation correctly passes internal routing IDs or Gateway Payment IDs into the Stripe `PaymentIntent` metadata.
+**Symptom**: The gateway receives the webhook but returns `404 payment not found`.
+**Fix**: Always pass `--override "payment_intent:metadata[payment_id]=<pay_id>"` when triggering events via Stripe CLI. The `pay_id` must be an ID previously returned by `POST /api/v1/payments`.
 
 ### Idempotency Mismatches
-**Symptom**: Replayed webhooks cause errors or duplicated state changes.
-**Fix**: The webhook processing must be fully idempotent. Check the `Idempotency-Key` headers on webhook logs to ensure repeat events from Stripe bypass processing gracefully.
+**Symptom**: Replayed webhooks cause errors or unexpected state changes.
+**Fix**: Webhook processing is fully idempotent — replays return `200` and are silently skipped. Check that `X-Idempotency-Key` is sent on payment creation requests.
 
 ### Unknown Event Type
-**Symptom**: The webhook is acknowledged (200 OK) but the payment state isn't updated.
-**Fix**: Check application logs. Ensure your gateway explicitly listens for `payment_intent.succeeded` and `payment_intent.payment_failed`, ignoring unsupported notification types.
+**Symptom**: The webhook is acknowledged (`200 OK`) but the payment state isn't updated.
+**Fix**: Check application logs for `ignoring unrecognized provider event type`. The gateway only processes `payment_intent.succeeded`, `payment_intent.payment_failed`, and `payment_intent.canceled`.
