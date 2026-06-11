@@ -19,6 +19,7 @@ type PaymentResponse struct {
 	Currency      string    `json:"currency"`
 	TransactionID string    `json:"transaction_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // PaymentStatusResponse represents the current status of a payment

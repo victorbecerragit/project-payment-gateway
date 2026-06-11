@@ -117,6 +117,8 @@ func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) err
 		return fmt.Errorf("payment not found by id %q or provider ref %q: %w", e.PaymentID, e.TransactionID, err)
 	}
 
+	slogext.Ctx(ctx).Info("payment resolved for event", "payment_id", p.ID, "event_type", e.Type, "provider_ref", e.TransactionID)
+
 	ctx, span := s.tracer.StartSpan(ctx, "app.ProcessEvent")
 	defer span.End()
 	span.SetAttribute("payment.id", p.ID)

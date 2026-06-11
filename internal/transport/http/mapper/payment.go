@@ -36,6 +36,7 @@ func ToPaymentResponse(p *dompayment.Payment) *dto.PaymentResponse {
 		Currency:      string(p.Currency),
 		TransactionID: p.TransactionID,
 		CreatedAt:     p.CreatedAt,
+		UpdatedAt:     p.UpdatedAt,
 	}
 }
 
