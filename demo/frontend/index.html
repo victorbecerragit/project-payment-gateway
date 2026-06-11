@@ -70,6 +70,9 @@
     #poll-indicator { font-size: 0.7rem; color: #475569; text-align: right; margin-top: 0.5rem; }
     .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; margin-right: 4px; animation: blink 2s infinite; }
     @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+    .lookup-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .lookup-row input { margin-bottom: 0; flex: 1; font-family: monospace; }
+    .lookup-row button { width: auto; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -116,8 +119,14 @@
 
     <!-- Payment list -->
     <div class="card" style="grid-column: 1 / -1;">
-      <h2>Payments <span style="color:#475569;font-weight:400;font-size:0.75rem;">(most recent first · auto-refreshed)</span></h2>
-      <div id="payments-list"><p style="color:#475569;font-size:0.8rem;">No payments yet. Create one above.</p></div>
+      <h2>Payments <span style="color:#475569;font-weight:400;font-size:0.75rem;">(most recent first · auto-refreshed)</span>
+        <button class="btn-danger btn-sm" onclick="clearPayments()" style="float:right">Clear</button>
+      </h2>
+      <div class="lookup-row">
+        <input id="lookup-id" type="text" placeholder="Paste a payment_id to load it (e.g. pay_20260611xxxxxx)" onkeydown="if(event.key==='Enter')lookupPayment()">
+        <button class="btn-primary btn-sm" onclick="lookupPayment()">Load</button>
+      </div>
+      <div id="payments-list" style="margin-top:0.75rem"><p style="color:#475569;font-size:0.8rem;">No payments yet. Create one above or paste an ID to load it.</p></div>
     </div>
 
     <!-- Event log -->
@@ -134,7 +143,45 @@
 
     document.getElementById('base-url-label').textContent = BASE_URL;
 
-    const payments = {}; // id -> {payment_id, status, amount, currency, updated_at, transaction_id}
+    const STORAGE_KEY = 'pgw_demo_payments';
+    const payments = {}; // id -> payment data
+
+    // Restore persisted payments from localStorage
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      Object.assign(payments, saved);
+    } catch (_) {}
+
+    function persist() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payments)); } catch (_) {}
+    }
+
+    function clearPayments() {
+      Object.keys(payments).forEach(k => delete payments[k]);
+      persist();
+      renderPayments();
+      updateMetrics();
+      log('Cleared all payments from view.');
+    }
+
+    async function lookupPayment() {
+      const input = document.getElementById('lookup-id');
+      const id = input.value.trim();
+      if (!id) return;
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/payments/${id}`);
+        if (!res.ok) { log(`✗ ${id} — HTTP ${res.status}`, 'error'); return; }
+        const data = await res.json();
+        payments[data.payment_id] = { ...data, _justUpdated: true };
+        persist();
+        renderPayments();
+        updateMetrics();
+        log(`✓ Loaded ${data.payment_id}  status=${data.status}`, 'ok');
+        input.value = '';
+      } catch (e) {
+        log(`✗ Lookup failed: ${e.message}`, 'error');
+      }
+    }
 
     function log(msg, type = 'info') {
       const el = document.getElementById('log');
@@ -224,6 +271,7 @@
           payments[data.payment_id] = { ...data, _justUpdated: true };
           log(`✓ Created ${data.payment_id}  status=${data.status}  pi=${data.transaction_id}`, 'ok');
           log(`  ↳ Run: stripe trigger payment_intent.succeeded --override "payment_intent:metadata[payment_id]=${data.payment_id}"`, 'warn');
+          persist();
           renderPayments();
           updateMetrics();
         }
@@ -251,6 +299,7 @@
           if (prev.status !== data.status) {
             log(`↻ ${id}  ${prev.status} → ${data.status}`, data.status === 'completed' ? 'ok' : data.status === 'failed' ? 'error' : 'warn');
             payments[id] = { ...data, _justUpdated: true };
+            persist();
           } else {
             payments[id] = { ...data, _justUpdated: false };
           }
@@ -263,7 +312,10 @@
 
     // Poll every 2 seconds
     setInterval(pollPayments, 2000);
-    log('Frontend started. Gateway: ' + BASE_URL);
+    const restoredCount = Object.keys(payments).length;
+    log(`Frontend started. Gateway: ${BASE_URL}` + (restoredCount ? `  · Restored ${restoredCount} payments from last session` : ''));
+    renderPayments();
+    updateMetrics();
   </script>
 </body>
 </html>
