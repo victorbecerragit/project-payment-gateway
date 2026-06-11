@@ -99,7 +99,7 @@ func main() {
 	transport.SetupRoutes(routerMux, paymentHandler, healthHandler, requestMetrics, cfg, rateLimiterCtx) // Pass cfg and rateLimiterCtx
 
 	// Apply CorrelationIDMiddleware to the entire router
-	finalHandler := middleware.CorrelationIDMiddleware(appTracer, routerMux)
+	finalHandler := middleware.CORSMiddleware(middleware.CorrelationIDMiddleware(appTracer, routerMux))
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
