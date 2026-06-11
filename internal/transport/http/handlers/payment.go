@@ -138,6 +138,12 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 // handleServiceError maps domain and application errors to appropriate HTTP responses
 func (h *PaymentHandler) handleServiceError(w http.ResponseWriter, ctx context.Context, err error) {
+	if errors.Is(err, payment.ErrPaymentNotFound) {
+		slogext.Ctx(ctx).Warn("payment not found", "error", err)
+		response.RespondWithError(w, http.StatusNotFound, "Not Found", "payment not found")
+		return
+	}
+
 	var payErr *payment.PaymentError
 	if errors.As(err, &payErr) {
 		statusCode := http.StatusInternalServerError

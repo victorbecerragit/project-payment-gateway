@@ -2,7 +2,6 @@ package inmemory
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
@@ -45,7 +44,7 @@ func (r *repository) GetByID(ctx context.Context, id string) (*payment.Payment, 
 
 	p, ok := r.payments[id]
 	if !ok {
-		return nil, fmt.Errorf("payment not found")
+		return nil, payment.ErrPaymentNotFound
 	}
 	return p, nil
 }
