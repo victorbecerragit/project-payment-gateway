@@ -6,23 +6,36 @@ metadata:
   labels:
     app: payment-gateway
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Path rewrite: use capture group so /api/v1/payments is preserved, not stripped
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Disable SSL redirect for local/demo use. Enable for production.
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # CORS: allow demo frontend (localhost:3000) to reach the gateway in-cluster
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, X-Idempotency-Key, X-Correlation-ID"
+    # For production: re-enable ssl-redirect and set cert-manager below
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx
-  tls:
-  - hosts:
-    - api.payment-gateway.example.com
-    secretName: payment-gateway-tls
+  # For production: uncomment TLS block and replace host
+  # tls:
+  # - hosts:
+  #   - api.payment-gateway.example.com
+  #   secretName: payment-gateway-tls
   rules:
-  - host: api.payment-gateway.example.com
+  # Replace with your actual demo host or use localhost for local cluster (e.g. minikube/kind)
+  # Can also use nip.io or xip.io wildcard DNS for local testing (e.g. payment-gateway.127.0.0.1.nip.io)
+  # Implement nip.io wildcard DNS for local testing: payment-gateway.127.0.0.1.nip.io
+  - host: payment-gateway.127.0.0.1.nip.io
     http:
       paths:
-      - path: /
-        pathType: Prefix
+      - path: /()(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: payment-gateway
             port:
               number: 80
+

@@ -14,6 +14,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid development config",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{"USD", "EUR"},
 				APIRateLimit:        10.0,
 				APIBurst:            20,
@@ -26,6 +27,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid production config with postgres and stripe",
 			config: Config{
 				Port:                "443",
+				StorageType:         "postgres",
 				SupportedCurrencies: []string{"USD"},
 				DatabaseURL:         "postgres://user:pass@localhost:5432/db",
 				StripeAPIKey:        "sk_test_123",
@@ -41,6 +43,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid production config with postgresql prefix",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "postgres",
 				SupportedCurrencies: []string{"USD"},
 				DatabaseURL:         "postgresql://user:pass@localhost:5432/db",
 				APIRateLimit:        10.0,
@@ -54,6 +57,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid port - non numeric",
 			config: Config{
 				Port:                "abc",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{"USD"},
 			},
 			wantErr: true,
@@ -62,6 +66,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid port - too low",
 			config: Config{
 				Port:                "0",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{"USD"},
 			},
 			wantErr: true,
@@ -70,6 +75,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid port - too high",
 			config: Config{
 				Port:                "70000",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{"USD"},
 			},
 			wantErr: true,
@@ -78,6 +84,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "empty currencies",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{},
 			},
 			wantErr: true,
@@ -86,6 +93,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "currencies with empty string",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{""},
 			},
 			wantErr: true,
@@ -94,6 +102,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid database url protocol",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "postgres",
 				SupportedCurrencies: []string{"USD"},
 				DatabaseURL:         "mysql://user:pass@localhost:3306/db",
 			},
@@ -103,6 +112,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "stripe key without secret",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{"USD"},
 				StripeAPIKey:        "sk_test_123",
 			},
@@ -112,8 +122,35 @@ func TestConfig_Validate(t *testing.T) {
 			name: "stripe secret without key",
 			config: Config{
 				Port:                "8080",
+				StorageType:         "inmemory",
 				SupportedCurrencies: []string{"USD"},
 				StripeWebhookSecret: "whsec_456",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid storage type",
+			config: Config{
+				Port:                "8080",
+				StorageType:         "redis",
+				SupportedCurrencies: []string{"USD"},
+				APIRateLimit:        10.0,
+				APIBurst:            20,
+				WebhookRateLimit:    50.0,
+				WebhookBurst:        100,
+			},
+			wantErr: true,
+		},
+		{
+			name: "postgres without database url",
+			config: Config{
+				Port:                "8080",
+				StorageType:         "postgres",
+				SupportedCurrencies: []string{"USD"},
+				APIRateLimit:        10.0,
+				APIBurst:            20,
+				WebhookRateLimit:    50.0,
+				WebhookBurst:        100,
 			},
 			wantErr: true,
 		},

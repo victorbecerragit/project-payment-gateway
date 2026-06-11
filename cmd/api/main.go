@@ -58,7 +58,7 @@ func main() {
 
 	// Initialize Repositories
 	var paymentRepo payment.Repository
-	if cfg.DatabaseURL != "" {
+	if strings.ToLower(cfg.StorageType) == "postgres" {
 		paymentRepo = postgres.NewRepository(context.Background(), cfg.DatabaseURL, appTracer)
 		slogext.Ctx(context.Background()).Info("using postgres repository", "type", "postgres") // Use slogext for consistency
 	} else {

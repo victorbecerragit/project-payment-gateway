@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Port                string
 	LogLevel            string
+	StorageType         string
 	SupportedCurrencies []string
 	DatabaseURL         string
 	StripeAPIKey        string
@@ -41,6 +42,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Port:                getEnv("PORT", "8080"),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
+		StorageType:         strings.ToLower(getEnv("STORAGE_TYPE", "inmemory")),
 		SupportedCurrencies: supportedCurrencies,
 		DatabaseURL:         getEnv("DATABASE_URL", ""),
 		StripeAPIKey:        getEnv("STRIPE_API_KEY", ""),
@@ -68,6 +70,18 @@ func (c *Config) Validate() error {
 	// Validate Currencies
 	if len(c.SupportedCurrencies) == 0 || (len(c.SupportedCurrencies) == 1 && c.SupportedCurrencies[0] == "") {
 		return fmt.Errorf("SUPPORTED_CURRENCIES cannot be empty")
+	}
+
+	// Validate Storage Type
+	switch c.StorageType {
+	case "inmemory", "postgres":
+	default:
+		return fmt.Errorf("STORAGE_TYPE must be either inmemory or postgres")
+	}
+
+	// Validate Postgres requirements
+	if c.StorageType == "postgres" && c.DatabaseURL == "" {
+		return fmt.Errorf("DATABASE_URL is required when STORAGE_TYPE=postgres")
 	}
 
 	// Validate Postgres connection string if provided

@@ -8,3 +8,17 @@ metadata:
 data:
   PORT: "8080"
   LOG_LEVEL: "info"
+  # Set to "stripe" for Stripe sandbox demo, "mock" for offline testing
+  PROVIDER: "stripe"
+  # Set to "inmemory" or "postgres"
+  STORAGE_TYPE: "postgres"
+  # Comma-separated ISO 4217 currency codes
+  SUPPORTED_CURRENCIES: "USD,EUR,GBP"
+  # API rate limiter: token refill rate per second
+  API_RATE_LIMIT: "10"
+  # API rate limiter: initial burst bucket size
+  API_BURST: "20"
+  # Webhook rate limiter: token refill rate per second
+  WEBHOOK_RATE_LIMIT: "50"
+  # Webhook rate limiter: initial burst bucket size
+  WEBHOOK_BURST: "100"
