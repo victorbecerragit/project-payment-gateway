@@ -155,12 +155,17 @@ case "$SCENARIO" in
     echo "▶ Stress-rate-limit: $REQUESTS parallel requests against POST /api/v1/payments"
     echo ""
     echo "  Rate limit config (env overrides or server defaults):"
-    echo "    API_RATE_LIMIT = ${API_RATE_LIMIT:-10}  req/s"
-    echo "    API_BURST      = ${API_BURST:-20}        tokens"
+    echo "    API_RATE_LIMIT = ${API_RATE_LIMIT:-10}  req/s   (token refill rate)"
+    echo "    API_BURST      = ${API_BURST:-20}        tokens  (initial bucket size)"
+    echo ""
+    echo "  ⚠  Expected 201s > burst (${API_BURST:-20}) because curl jobs take real"
+    echo "     wall-clock time: each extra second refills ${API_RATE_LIMIT:-10} tokens."
+    echo "     201s ≈ burst + (elapsed_sec × rate). That is correct limiter behaviour."
     echo ""
     echo "  Strategy: fire $REQUESTS requests simultaneously from one IP."
-    echo "  Burst=${API_BURST:-20} requests should succeed; the rest should return HTTP 429."
     echo ""
+
+    T_START=$(date +%s%N)
 
     # Launch all curl requests in parallel; write each HTTP status to a temp file
     PIDS=()
@@ -185,6 +190,11 @@ case "$SCENARIO" in
     for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
 
     # Tally results
+    T_END=$(date +%s%N)
+    ELAPSED_MS=$(( (T_END - T_START) / 1000000 ))
+    ELAPSED_S=$(echo "scale=2; $ELAPSED_MS / 1000" | bc)
+    EXPECTED=$(echo "scale=0; ${API_BURST:-20} + ${API_RATE_LIMIT:-10} * $ELAPSED_S / 1" | bc 2>/dev/null || echo "~$((${API_BURST:-20} + ${API_RATE_LIMIT:-10} * ELAPSED_MS / 1000))")
+
     OK=0; RATE_LIMITED=0; OTHER=0
     for f in "$TMPDIR_RL"/*; do
       CODE=$(cat "$f")
@@ -202,11 +212,17 @@ case "$SCENARIO" in
     printf "  ❌  Other             : %d\n" "$OTHER"
     printf "  ────────────────────────────────────\n"
     printf "  Total sent            : %d\n" "$TOTAL"
+    printf "  Elapsed               : %ss\n" "$ELAPSED_S"
+    printf "  Expected 201s ≈ burst(%s) + rate(%s)×%ss ≈ %s\n" \
+      "${API_BURST:-20}" "${API_RATE_LIMIT:-10}" "$ELAPSED_S" "$EXPECTED"
     echo "──────────────────────────────────────────"
 
     if [ "$RATE_LIMITED" -gt 0 ]; then
       echo ""
       echo "  ✔ Rate limiter is working: $RATE_LIMITED request(s) were rejected with 429."
+      echo ""
+      echo "  Tip: query the $OK created payments with:"
+      echo "    curl -s \"$GATEWAY_URL/api/v1/payments?status=pending&limit=${OK}\" | jq 'length'"
     else
       echo ""
       echo "  ⚠ No 429s observed. Try increasing REQUESTS beyond the burst window."

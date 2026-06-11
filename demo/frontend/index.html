@@ -141,6 +141,7 @@
     <div class="card" style="grid-column: 1 / -1;">
       <h2>Payments <span style="color:#475569;font-weight:400;font-size:0.75rem;">(most recent first · auto-refreshed)</span>
         <button class="btn-danger btn-sm" onclick="clearPayments()" style="float:right">Clear</button>
+        <button class="btn-primary btn-sm" onclick="reloadFromAPI()" style="float:right;margin-right:0.5rem">↺ Reload from API</button>
       </h2>
       <div class="lookup-row">
         <input id="lookup-id" type="text" placeholder="Paste a payment_id to load it (e.g. pay_20260611xxxxxx)" onkeydown="if(event.key==='Enter')lookupPayment()">
@@ -272,7 +273,7 @@
       document.getElementById('m-failed').textContent = counts.failed;
     }
 
-    async function loadTransactionsByStatus(status, limit = 10) {
+    async function loadTransactionsByStatus(status, limit = 50) {
       const res = await fetch(`${BASE_URL}/api/v1/payments?status=${encodeURIComponent(status)}&limit=${limit}`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -287,9 +288,9 @@
     async function loadInitialTransactions() {
       try {
         const [completed, pending, failed] = await Promise.all([
-          loadTransactionsByStatus('completed', 10),
-          loadTransactionsByStatus('pending', 10),
-          loadTransactionsByStatus('failed', 10)
+          loadTransactionsByStatus('completed', 50),
+          loadTransactionsByStatus('pending', 50),
+          loadTransactionsByStatus('failed', 50)
         ]);
 
         [...completed, ...pending, ...failed].forEach(p => {
@@ -299,10 +300,15 @@
         persist();
         renderPayments();
         updateMetrics();
-        log(`Loaded ${completed.length} completed, ${pending.length} pending, and ${failed.length} failed payments from API.`, 'ok');
+        log(`Loaded ${completed.length} completed, ${pending.length} pending, ${failed.length} failed from API.`, 'ok');
       } catch (e) {
-        log(`Could not preload completed/pending/failed payments: ${e.message}`, 'warn');
+        log(`Could not preload payments: ${e.message}`, 'warn');
       }
+    }
+
+    async function reloadFromAPI() {
+      log('Reloading all transactions from API…');
+      await loadInitialTransactions();
     }
 
     async function createPayment() {
