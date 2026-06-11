@@ -145,15 +145,87 @@ case "$SCENARIO" in
     echo "Done. ✅ $SUCCESS succeeded  ❌ $FAIL failed  (total: $REQUESTS)"
     ;;
 
+  # ── Scenario 5: Stress rate-limit (parallel burst, expects 429s) ─────────
+  stress-rate-limit)
+    REQUESTS="${REQUESTS:-60}"
+    CONCURRENCY="${CONCURRENCY:-60}"  # fire all at once to blow past burst=20
+    TMPDIR_RL=$(mktemp -d)
+    trap 'rm -rf "$TMPDIR_RL"' EXIT
+
+    echo "▶ Stress-rate-limit: $REQUESTS parallel requests against POST /api/v1/payments"
+    echo ""
+    echo "  Rate limit config (env overrides or server defaults):"
+    echo "    API_RATE_LIMIT = ${API_RATE_LIMIT:-10}  req/s"
+    echo "    API_BURST      = ${API_BURST:-20}        tokens"
+    echo ""
+    echo "  Strategy: fire $REQUESTS requests simultaneously from one IP."
+    echo "  Burst=${API_BURST:-20} requests should succeed; the rest should return HTTP 429."
+    echo ""
+
+    # Launch all curl requests in parallel; write each HTTP status to a temp file
+    PIDS=()
+    for i in $(seq 1 "$REQUESTS"); do
+      IDEM="load-rl-$(uuid)"
+      (
+        HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$GATEWAY_URL/api/v1/payments" \
+          -H "Content-Type: application/json" \
+          -H "X-Idempotency-Key: $IDEM" \
+          -d "{\"amount\":9.99,\"currency\":\"USD\",\"description\":\"rate limit test\",\"customer_id\":\"cust_rl\"}")
+        echo "$HTTP" > "$TMPDIR_RL/$i"
+      ) &
+      PIDS+=($!)
+
+      # Honour concurrency cap: wait for a batch before launching more
+      if [ ${#PIDS[@]} -ge "$CONCURRENCY" ]; then
+        for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+        PIDS=()
+      fi
+    done
+    # Wait for any remaining background jobs
+    for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+    # Tally results
+    OK=0; RATE_LIMITED=0; OTHER=0
+    for f in "$TMPDIR_RL"/*; do
+      CODE=$(cat "$f")
+      case "$CODE" in
+        201) OK=$((OK+1)) ;;
+        429) RATE_LIMITED=$((RATE_LIMITED+1)) ;;
+        *)   OTHER=$((OTHER+1)) ;;
+      esac
+    done
+
+    TOTAL=$((OK + RATE_LIMITED + OTHER))
+    echo "──────────────────────────────────────────"
+    printf "  ✅  201 Created       : %d\n" "$OK"
+    printf "  🚫  429 Rate Limited  : %d\n" "$RATE_LIMITED"
+    printf "  ❌  Other             : %d\n" "$OTHER"
+    printf "  ────────────────────────────────────\n"
+    printf "  Total sent            : %d\n" "$TOTAL"
+    echo "──────────────────────────────────────────"
+
+    if [ "$RATE_LIMITED" -gt 0 ]; then
+      echo ""
+      echo "  ✔ Rate limiter is working: $RATE_LIMITED request(s) were rejected with 429."
+    else
+      echo ""
+      echo "  ⚠ No 429s observed. Try increasing REQUESTS beyond the burst window."
+      echo "  Tip: REQUESTS=100 $0 stress-rate-limit"
+    fi
+    ;;
+
   *)
     echo "Unknown scenario: $SCENARIO"
-    echo "Usage: $0 [mock|stripe|stripe-fail|stress]"
+    echo "Usage: $0 [mock|stripe|stripe-fail|stress|stress-rate-limit]"
     echo ""
     echo "Environment variables:"
     echo "  GATEWAY_URL        (default: http://localhost:8080)"
-    echo "  REQUESTS           (default: 5)"
+    echo "  REQUESTS           (default: 5, stress-rate-limit default: 60)"
+    echo "  CONCURRENCY        (default: 60, stress-rate-limit only)"
     echo "  DELAY              (default: 0.5s between requests)"
     echo "  TRIGGER_WEBHOOKS   (default: false, stripe mode only)"
+    echo "  API_RATE_LIMIT     (display only, reads server env)"
+    echo "  API_BURST          (display only, reads server env)"
     exit 1
     ;;
 esac
