@@ -1,0 +1,83 @@
+# busybox-postgres-query.yaml
+# A one-shot Pod that connects to the Postgres backend and queries the payments table.
+# Usage:
+#   kubectl apply -f busybox-postgres-query.yaml
+#   kubectl logs busybox-postgres-query
+#   kubectl delete pod busybox-postgres-query
+#
+# Prerequisites:
+#   - postgres StatefulSet is running (k8s/postgres.yaml applied)
+#   - payment-gateway-secrets Secret exists with DATABASE_URL set
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox-postgres-query
+  namespace: default
+  labels:
+    app: busybox-postgres-query
+spec:
+  restartPolicy: Never
+  containers:
+  - name: psql
+    # postgres:16-alpine ships with psql — lighter than installing it in busybox
+    image: postgres:16-alpine
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "=== Connecting to Postgres ==="
+      echo "Host    : postgres:5432"
+      echo "Database: payments"
+      echo ""
+
+      echo "=== 1. Table existence check ==="
+      psql "$DATABASE_URL" -c "
+        SELECT to_regclass('public.payments') AS payments_table;
+      "
+
+      echo ""
+      echo "=== 2. Schema overview ==="
+      psql "$DATABASE_URL" -c "
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'payments'
+        ORDER BY ordinal_position;
+      "
+
+      echo ""
+      echo "=== 3. Row count ==="
+      psql "$DATABASE_URL" -c "
+        SELECT COUNT(*) AS total_payments FROM payments;
+      "
+
+      echo ""
+      echo "=== 4. Status breakdown ==="
+      psql "$DATABASE_URL" -c "
+        SELECT status, COUNT(*) AS count
+        FROM payments
+        GROUP BY status
+        ORDER BY count DESC;
+      "
+
+      echo ""
+      echo "=== 5. Most recent 10 payments ==="
+      psql "$DATABASE_URL" -c "
+        SELECT id, customer_id, amount, currency, status, created_at
+        FROM payments
+        ORDER BY created_at DESC
+        LIMIT 10;
+      "
+
+      echo ""
+      echo "=== Done ==="
+    env:
+    - name: DATABASE_URL
+      value: "postgres://pguser:pgpassword@postgres:5432/payments?sslmode=disable"
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "50m"
+      limits:
+        memory: "64Mi"
+        cpu: "100m"

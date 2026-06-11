@@ -111,7 +111,7 @@ spec:
         lifecycle:
           preStop:
             exec:
-              command: ["/bin/sh", "-c", "sleep 5"]
+              command: ["/bin/sh", "-c", "echo 'Container is shutting down...' && sleep 10"] # Allow time for in-flight requests to complete during shutdown
         livenessProbe:
           httpGet:
             path: /health
