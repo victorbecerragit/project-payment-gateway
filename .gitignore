@@ -31,3 +31,4 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+k8s/eso/secretstore-literal.yaml
