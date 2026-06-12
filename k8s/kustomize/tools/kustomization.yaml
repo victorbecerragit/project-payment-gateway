@@ -1,0 +1,16 @@
+# k8s/kustomize/tools/kustomization.yaml
+# Applies the in-cluster demo tooling:
+#   - stripe-listener: forwards Stripe webhook events to POST /api/v1/webhooks/payment
+#
+# NOTE: stripe-trigger-job.yaml is intentionally excluded here.
+#       It is a one-shot Job that must be deleted and re-applied between runs.
+#       Apply it directly:
+#         kubectl delete job stripe-trigger-demo --ignore-not-found
+#         kubectl apply -f k8s/tools/stripe-trigger-job.yaml
+#
+# Usage:
+#   kubectl apply -k k8s/kustomize/tools/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../k8s/tools/stripe-listener.yaml

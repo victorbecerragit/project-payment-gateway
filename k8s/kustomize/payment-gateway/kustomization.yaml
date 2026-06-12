@@ -1,0 +1,18 @@
+# k8s/kustomize/payment-gateway/kustomization.yaml
+# Applies all payment-gateway resources:
+#   ConfigMap, Deployment, Service, HPA, Ingress.
+#
+# Depends on:
+#   - payment-gateway-secrets (created by ESO)
+#   - postgres Service (created by postgres component)
+#
+# Usage (standalone):
+#   kubectl apply -k k8s/kustomize/payment-gateway/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../k8s/configmap.yaml
+  - ../../../k8s/deployment.yaml
+  - ../../../k8s/service.yaml
+  - ../../../k8s/hpa.yaml
+  - ../../../k8s/ingress.yaml

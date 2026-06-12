@@ -1,0 +1,22 @@
+# k8s/kustomize/base/kustomization.yaml
+# Composes all app components for a full demo deploy.
+# ESO secrets are intentionally excluded — apply them first and wait for sync:
+#
+#   # Step 1 — secrets (order matters)
+#   kubectl apply -k k8s/kustomize/eso/
+#   kubectl wait --for=condition=Ready externalsecret/payment-gateway-secrets --timeout=30s
+#
+#   # Step 2 — full stack
+#   kubectl apply -k k8s/kustomize/base/
+#   kubectl wait --for=condition=ready pod -l app=payment-gateway --timeout=90s
+#
+# Teardown:
+#   kubectl delete -k k8s/kustomize/base/
+#   kubectl delete -k k8s/kustomize/eso/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../postgres
+  - ../payment-gateway
+  - ../frontend
+  - ../tools

@@ -1,0 +1,16 @@
+# k8s/kustomize/eso/kustomization.yaml
+# Applies ESO SecretStore + ExternalSecret.
+# Must be applied BEFORE the rest of the stack so that
+# payment-gateway-secrets is synced before pods start.
+#
+# Usage:
+#   kubectl apply -k k8s/kustomize/eso/
+#   kubectl wait --for=condition=Ready externalsecret/payment-gateway-secrets --timeout=30s
+#
+# NOTE: secretstore-literal-fake.yaml contains real secret values for local demo.
+#       It is listed in .gitignore and must never be committed.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../k8s/eso/secretstore-literal-fake.yaml
+  - ../../../k8s/eso/externalsecret.yaml

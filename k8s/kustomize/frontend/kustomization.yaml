@@ -1,0 +1,9 @@
+# k8s/kustomize/frontend/kustomization.yaml
+# Applies the frontend Deployment, Service, and ConfigMap.
+#
+# Usage (standalone):
+#   kubectl apply -k k8s/kustomize/frontend/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../k8s/frontend.yml
