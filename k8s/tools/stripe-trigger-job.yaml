@@ -59,7 +59,11 @@ spec:
         - |
           set -euo pipefail
 
-          GATEWAY_URL="${GATEWAY_URL:-http://payment-gateway}"
+          # stripe-cli is Alpine-based; use apk instead of apt-get
+          apk add --no-cache curl
+
+
+          GATEWAY_URL="${GATEWAY_URL:-http://payment-gateway:8080/api/}" # Ensure this is correct
           MODE="${MODE:-drain}"           # drain | create
           SCENARIO="${SCENARIO:-stripe}"  # stripe | stripe-fail
           REQUESTS="${REQUESTS:-5}"       # only used in MODE=create
@@ -84,8 +88,8 @@ spec:
           # ── MODE: drain ────────────────────────────────────────────────────
           # Fetch all pending payments from the gateway and trigger webhooks for each.
           if [ "$MODE" = "drain" ]; then
-            echo "▶ Fetching pending payments from $GATEWAY_URL/api/v1/payments?status=pending&limit=200..."
-            RESPONSE=$(curl -sf "$GATEWAY_URL/api/v1/payments?status=pending&limit=200" || echo "[]")
+            echo "▶ Fetching pending payments from ${GATEWAY_URL}v1/payments?status=pending..."
+            RESPONSE=$(curl -sf "${GATEWAY_URL}v1/payments?status=pending" || echo "[]")
             # Extract payment_id values using grep + sed (no jq in stripe-cli image)
             PAY_IDS=$(echo "$RESPONSE" | grep -o '"payment_id":"[^"]*"' | sed 's/"payment_id":"//;s/"//')
 
@@ -109,7 +113,11 @@ spec:
             echo ""
             for i in $(seq 1 "$REQUESTS"); do
               IDEM="job-$(date +%s%N)-$i"
-              BODY=$(curl -sf -X POST "$GATEWAY_URL/api/v1/payments"                 -H "Content-Type: application/json"                 -H "X-Idempotency-Key: $IDEM"                 -d "{"amount":49.99,"currency":"USD","description":"K8s demo job payment $i","customer_id":"cust_k8s_demo"}"                 || echo "{}")
+              BODY=$(curl -sf -X POST "${GATEWAY_URL}v1/payments" \
+                -H "Content-Type: application/json" \
+                -H "X-Idempotency-Key: $IDEM" \
+                -d "{\"amount\":49.99,\"currency\":\"USD\",\"description\":\"K8s demo job payment $i\",\"customer_id\":\"cust_k8s_demo\"}" \
+                || echo "{}")
               PAY_ID=$(echo "$BODY" | grep -o '"payment_id":"[^"]*"' | sed 's/"payment_id":"//;s/"//')
               if [ -n "$PAY_ID" ]; then
                 echo "  ✅ Created [$i/$REQUESTS]: $PAY_ID"
@@ -127,11 +135,10 @@ spec:
 
           echo ""
           echo "✔ Done. Verify results:"
-          echo "  kubectl exec deploy/payment-gateway -- wget -qO- \"
-          echo "    http://localhost:8080/api/v1/payments?status=pending | grep payment_id"
+          echo "  kubectl exec deploy/payment-gateway -- curl -s http://localhost:8080/api/v1/payments?status=pending"
         env:
         - name: GATEWAY_URL
-          value: "http://payment-gateway"
+          value: "http://payment-gateway:8080/api/"
         # ── Set MODE=drain to trigger webhooks for pre-existing pending payments ──
         # ── Set MODE=create to create new payments and trigger them             ──
         - name: MODE

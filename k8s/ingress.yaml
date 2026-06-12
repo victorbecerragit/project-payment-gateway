@@ -6,21 +6,18 @@ metadata:
   labels:
     app: payment-gateway
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "*"
-    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, X-Idempotency-Key, X-Correlation-ID, Stripe-Signature"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,X-Idempotency-Key,X-Correlation-ID,Stripe-Signature,Origin,Accept"
     nginx.ingress.kubernetes.io/proxy-body-size: "4m"
 spec:
   ingressClassName: nginx
   rules:
-  # ── Frontend: served at http://payment-gateway.127.0.0.1.nip.io/ ─────────
-  # The JS will call http://payment-gateway.127.0.0.1.nip.io:8080 for the API.
-  # Use port-forward on 8080 → payment-gateway svc for that to resolve locally.
-  - host: payment-gateway.127.0.0.1.nip.io
-    http:
+  - http:
       paths:
       # Webhook route first (more specific)
       - path: /()(api/v1/webhooks/.*)
@@ -29,7 +26,7 @@ spec:
           service:
             name: payment-gateway
             port:
-              number: 80
+              number: 8080
       # API routes
       - path: /()(api/.*)
         pathType: ImplementationSpecific
@@ -37,7 +34,7 @@ spec:
           service:
             name: payment-gateway
             port:
-              number: 80
+              number: 8080
       # Health/ready probes
       - path: /()(health|ready|metrics)
         pathType: ImplementationSpecific
@@ -45,7 +42,7 @@ spec:
           service:
             name: payment-gateway
             port:
-              number: 80
+              number: 8080
       # Frontend — catch-all, must be last
       - path: /()(.*)
         pathType: ImplementationSpecific

@@ -48,7 +48,8 @@ spec:
         - stripe
         - listen
         - --forward-to
-        - http://payment-gateway/api/v1/webhooks/stripe
+        #- http://payment-gateway/api/v1/webhooks/stripe
+        - http://payment-gateway:8080/api/v1/webhooks/stripe
         - --events
         - payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,charge.refunded
         env:
