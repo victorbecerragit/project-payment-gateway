@@ -54,7 +54,7 @@ kind load docker-image payment-gateway:latest --name payment-demo
 
 ## 1. Configure secrets
 
-Edit `k8s/eso/secretstore-literal.yaml` with your Stripe test keys before every demo:
+Edit `k8s/eso/secretstore-literal-fake.yaml` with your Stripe test keys before every demo:
 
 ```yaml
 spec:
@@ -69,7 +69,7 @@ spec:
           value: "postgres://pguser:pgpassword@postgres:5432/payments?sslmode=disable"
 ```
 
-> `k8s/eso/secretstore-literal.yaml` is in `.gitignore` — never commit real values.  
+> `k8s/eso/secretstore-literal-fake.yaml` is in `.gitignore` — never commit real values.  
 > For production, swap the `SecretStore` backend to AWS Secrets Manager or GCP Secret Manager —  
 > the `ExternalSecret` and `Deployment` manifests stay unchanged.  
 > See `docs/secrets-management-eso.md` for the full reference.
@@ -78,33 +78,18 @@ spec:
 
 ## 2. Deploy the full stack
 
+The deploy uses [Kustomize](https://kustomize.io) overlays under `k8s/kustomize/`.  
+ESO secrets are applied first and verified before the rest of the stack starts —  
+this prevents the `payment-gateway` pods from crash-looping while the secret syncs.
+
 ```bash
-# 1. Secrets — must be applied first
-kubectl apply -f k8s/eso/secretstore-literal.yaml
-kubectl apply -f k8s/eso/externalsecret.yaml
-kubectl get externalsecret payment-gateway-secrets
-# → STATUS=SecretSynced  READY=True
+# Step 1 — secrets (order matters: ESO must sync before pods start)
+kubectl apply -k k8s/kustomize/eso/
+kubectl wait --for=condition=Ready externalsecret/payment-gateway-secrets --timeout=30s
 
-# 2. Postgres
-kubectl apply -f k8s/postgres-secret.yaml
-kubectl apply -f k8s/postgres.yaml
-kubectl wait --for=condition=ready pod -l app=postgres --timeout=60s
-
-# 3. Payment Gateway
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/hpa.yaml
-kubectl apply -f k8s/ingress.yaml
-kubectl wait --for=condition=ready pod -l app=payment-gateway --timeout=60s
-
-# 4. Frontend
-kubectl apply -f k8s/frontend.yml
-kubectl wait --for=condition=ready pod -l app=frontend --timeout=60s
-
-# 5. Stripe listener — in-cluster forwarder to POST /api/v1/webhooks/payment
-kubectl apply -f k8s/tools/stripe-listener.yaml
-kubectl wait --for=condition=ready pod -l app=stripe-listener --timeout=60s
+# Step 2 — full stack (postgres + payment-gateway + frontend + stripe-listener)
+kubectl apply -k k8s/kustomize/base/
+kubectl wait --for=condition=ready pod -l app=payment-gateway --timeout=90s
 ```
 
 Verify all pods:
@@ -122,6 +107,11 @@ payment-gateway-xxx (x3)           1/1     Running
 postgres-0                         1/1     Running
 stripe-listener-xxx                1/1     Running
 ```
+
+> Each component also has a standalone kustomization for selective deploys:  
+> `kubectl apply -k k8s/kustomize/payment-gateway/`  
+> `kubectl apply -k k8s/kustomize/postgres/`  
+> etc.
 
 ---
 
@@ -378,9 +368,9 @@ kubectl get hpa
 kill %1 %2
 
 # Delete all cluster resources
-kubectl delete -f k8s/tools/ --ignore-not-found=true
-kubectl delete -f k8s/ --ignore-not-found=true
-kubectl delete -f k8s/eso/ --ignore-not-found=true
+kubectl delete job stripe-trigger-demo --ignore-not-found
+kubectl delete -k k8s/kustomize/base/
+kubectl delete -k k8s/kustomize/eso/
 
 # Full cluster teardown
 kind delete cluster --name payment-demo
@@ -392,7 +382,7 @@ kind delete cluster --name payment-demo
 
 | Step | Demonstrates |
 |---|---|
-| 2 | K8s-native deploy: Deployment, Service, Ingress, HPA, ESO secrets, in-cluster Stripe listener |
+| 2 | K8s-native deploy via Kustomize: Deployment, Service, Ingress, HPA, ESO secrets, in-cluster Stripe listener |
 | 4 | Stripe PaymentIntent creation, `pending` state, structured JSON response |
 | 5 | Idempotency — safe retries, no duplicate charges |
 | 6 | Async webhook flow via `stripe-trigger-job`, HMAC signature verified by gateway |
@@ -410,7 +400,7 @@ kind delete cluster --name payment-demo
 |---|---|
 | `stripe-listener` pod not starting | `kubectl get secret payment-gateway-secrets` — must exist with `STRIPE_API_KEY` key |
 | Job: `No pending payments found` | Create at least one payment in Step 4 before running the Job |
-| `[400]` on webhook | `STRIPE_WEBHOOK_SECRET` mismatch — re-apply `secretstore-literal.yaml` and force-sync ESO: `kubectl annotate externalsecret payment-gateway-secrets force-sync=$(date +%s) --overwrite` |
+| `[400]` on webhook | `STRIPE_WEBHOOK_SECRET` mismatch — re-apply `secretstore-literal-fake.yaml` and force-sync ESO: `kubectl annotate externalsecret payment-gateway-secrets force-sync=$(date +%s) --overwrite` |
 | Frontend "Network error" | Port-forward on `:8080` not running — redo Step 3 |
 | `ImagePullBackOff` on payment-gateway | `kind load docker-image payment-gateway:latest --name payment-demo` |
 | `job already exists` error | `kubectl delete job stripe-trigger-demo` before re-applying |
