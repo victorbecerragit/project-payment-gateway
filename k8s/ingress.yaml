@@ -6,36 +6,51 @@ metadata:
   labels:
     app: payment-gateway
   annotations:
-    # Path rewrite: use capture group so /api/v1/payments is preserved, not stripped
     nginx.ingress.kubernetes.io/rewrite-target: /$2
-    # Disable SSL redirect for local/demo use. Enable for production.
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    # CORS: allow demo frontend (localhost:3000) to reach the gateway in-cluster
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "*"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, X-Idempotency-Key, X-Correlation-ID"
-    # For production: re-enable ssl-redirect and set cert-manager below
-    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, X-Idempotency-Key, X-Correlation-ID, Stripe-Signature"
+    nginx.ingress.kubernetes.io/proxy-body-size: "4m"
 spec:
   ingressClassName: nginx
-  # For production: uncomment TLS block and replace host
-  # tls:
-  # - hosts:
-  #   - api.payment-gateway.example.com
-  #   secretName: payment-gateway-tls
   rules:
-  # Replace with your actual demo host or use localhost for local cluster (e.g. minikube/kind)
-  # Can also use nip.io or xip.io wildcard DNS for local testing (e.g. payment-gateway.127.0.0.1.nip.io)
-  # Implement nip.io wildcard DNS for local testing: payment-gateway.127.0.0.1.nip.io
+  # ── Frontend: served at http://payment-gateway.127.0.0.1.nip.io/ ─────────
+  # The JS will call http://payment-gateway.127.0.0.1.nip.io:8080 for the API.
+  # Use port-forward on 8080 → payment-gateway svc for that to resolve locally.
   - host: payment-gateway.127.0.0.1.nip.io
     http:
       paths:
-      - path: /()(.*)
+      # Webhook route first (more specific)
+      - path: /()(api/v1/webhooks/.*)
         pathType: ImplementationSpecific
         backend:
           service:
             name: payment-gateway
             port:
               number: 80
-
+      # API routes
+      - path: /()(api/.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: payment-gateway
+            port:
+              number: 80
+      # Health/ready probes
+      - path: /()(health|ready|metrics)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: payment-gateway
+            port:
+              number: 80
+      # Frontend — catch-all, must be last
+      - path: /()(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80

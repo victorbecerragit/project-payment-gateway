@@ -1,0 +1,156 @@
+# stripe-trigger-job.yaml
+# Kubernetes Job that automates Stripe webhook triggering for the payment-gateway demo.
+#
+# Two modes controlled by the MODE env var:
+#
+#   MODE=create (default)
+#     Creates REQUESTS new payments via the gateway API, then triggers
+#     a Stripe webhook for each one. Use this for a clean self-contained demo run.
+#
+#   MODE=drain
+#     Scans ALL existing "pending" payments in the gateway (via GET /api/v1/payments?status=pending)
+#     and triggers a Stripe webhook for each one. Use this when you have already
+#     loaded transactions manually or via the load generator and want to advance them all.
+#
+# Usage:
+#   # Trigger webhooks for pre-existing pending payments:
+#   kubectl apply -f k8s/tools/stripe-trigger-job.yaml   # MODE=drain by default below
+#
+#   # Create 5 new payments and trigger them:
+#   # Edit MODE=create and REQUESTS=5, then:
+#   kubectl apply -f k8s/tools/stripe-trigger-job.yaml
+#
+#   # Watch live logs:
+#   kubectl logs -l app=stripe-trigger-demo -f
+#
+#   # Re-run (Jobs are immutable — delete first):
+#   kubectl delete job stripe-trigger-demo
+#   kubectl apply -f k8s/tools/stripe-trigger-job.yaml
+#
+# Lifecycle:
+#   - restartPolicy: Never   → fails fast, no retry loops
+#   - backoffLimit: 0        → one attempt only
+#   - ttlSecondsAfterFinished: 600 → auto-deleted 10 min after completion (pass or fail)
+#     The 10-min window gives you time to read logs before the pod disappears.
+#     To read logs before deletion: kubectl logs -l app=stripe-trigger-demo
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stripe-trigger-demo
+  namespace: default
+  labels:
+    app: stripe-trigger-demo
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: stripe-trigger-demo
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: stripe-trigger
+        image: stripe/stripe-cli:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -euo pipefail
+
+          GATEWAY_URL="${GATEWAY_URL:-http://payment-gateway}"
+          MODE="${MODE:-drain}"           # drain | create
+          SCENARIO="${SCENARIO:-stripe}"  # stripe | stripe-fail
+          REQUESTS="${REQUESTS:-5}"       # only used in MODE=create
+
+          EVENT="payment_intent.succeeded"
+          [ "$SCENARIO" = "stripe-fail" ] && EVENT="payment_intent.payment_failed"
+
+          echo "============================================"
+          echo " Stripe Demo Trigger Job"
+          echo " Gateway  : $GATEWAY_URL"
+          echo " Mode     : $MODE"
+          echo " Scenario : $SCENARIO ($EVENT)"
+          echo "============================================"
+          echo ""
+
+          trigger_webhook() {
+            local PAY_ID="$1"
+            stripe trigger "$EVENT"               --override "payment_intent:metadata[payment_id]=$PAY_ID"               && echo "  ✅ Triggered: $PAY_ID"               || echo "  ❌ Failed:    $PAY_ID"
+            sleep 0.3
+          }
+
+          # ── MODE: drain ────────────────────────────────────────────────────
+          # Fetch all pending payments from the gateway and trigger webhooks for each.
+          if [ "$MODE" = "drain" ]; then
+            echo "▶ Fetching pending payments from $GATEWAY_URL/api/v1/payments?status=pending&limit=200..."
+            RESPONSE=$(curl -sf "$GATEWAY_URL/api/v1/payments?status=pending&limit=200" || echo "[]")
+            # Extract payment_id values using grep + sed (no jq in stripe-cli image)
+            PAY_IDS=$(echo "$RESPONSE" | grep -o '"payment_id":"[^"]*"' | sed 's/"payment_id":"//;s/"//')
+
+            COUNT=$(echo "$PAY_IDS" | grep -c 'pay_' || true)
+            if [ "$COUNT" -eq 0 ]; then
+              echo "  ⚠ No pending payments found. Nothing to trigger."
+              echo "  Tip: create payments first with MODE=create, or run the load generator."
+              exit 0
+            fi
+
+            echo "  Found $COUNT pending payment(s). Triggering webhooks..."
+            echo ""
+            for PAY_ID in $PAY_IDS; do
+              trigger_webhook "$PAY_ID"
+            done
+
+          # ── MODE: create ───────────────────────────────────────────────────
+          # Create REQUESTS new payments, then trigger a webhook for each.
+          elif [ "$MODE" = "create" ]; then
+            echo "▶ Creating $REQUESTS new payment(s) and triggering webhooks..."
+            echo ""
+            for i in $(seq 1 "$REQUESTS"); do
+              IDEM="job-$(date +%s%N)-$i"
+              BODY=$(curl -sf -X POST "$GATEWAY_URL/api/v1/payments"                 -H "Content-Type: application/json"                 -H "X-Idempotency-Key: $IDEM"                 -d "{"amount":49.99,"currency":"USD","description":"K8s demo job payment $i","customer_id":"cust_k8s_demo"}"                 || echo "{}")
+              PAY_ID=$(echo "$BODY" | grep -o '"payment_id":"[^"]*"' | sed 's/"payment_id":"//;s/"//')
+              if [ -n "$PAY_ID" ]; then
+                echo "  ✅ Created [$i/$REQUESTS]: $PAY_ID"
+                trigger_webhook "$PAY_ID"
+              else
+                echo "  ❌ Failed  [$i/$REQUESTS]: $BODY"
+              fi
+              sleep 0.5
+            done
+
+          else
+            echo "  ❌ Unknown MODE=$MODE. Use MODE=drain or MODE=create."
+            exit 1
+          fi
+
+          echo ""
+          echo "✔ Done. Verify results:"
+          echo "  kubectl exec deploy/payment-gateway -- wget -qO- \"
+          echo "    http://localhost:8080/api/v1/payments?status=pending | grep payment_id"
+        env:
+        - name: GATEWAY_URL
+          value: "http://payment-gateway"
+        # ── Set MODE=drain to trigger webhooks for pre-existing pending payments ──
+        # ── Set MODE=create to create new payments and trigger them             ──
+        - name: MODE
+          value: "drain"
+        # stripe = payment_intent.succeeded | stripe-fail = payment_intent.payment_failed
+        - name: SCENARIO
+          value: "stripe"
+        # Only used in MODE=create
+        - name: REQUESTS
+          value: "5"
+        - name: STRIPE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payment-gateway-secrets
+              key: STRIPE_API_KEY
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
