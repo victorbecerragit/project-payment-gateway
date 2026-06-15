@@ -34,7 +34,7 @@ This payment gateway service is a microservice designed for Kubernetes environme
 ### Key Features & Design
 - **Stateless Design**: No local state, fully horizontally scalable
 - **Ingress-First**: Optimized for NGINX Ingress with path-based routing
-- **Health Checks**: Built-in liveness and readiness probes
+- **Health Checks**: Built-in liveness and readiness probes (exposed via Ingress)
 - **Cloud-Native**: 12-factor app compliant
 - **Security-First**: Non-root containers, read-only filesystem
 - **Observable**: Structured logging, metrics-ready endpoints
@@ -133,6 +133,14 @@ The complete API specification is available in `openapi.yaml`. You can view it u
 - [Redoc](https://github.com/Redocly/redoc)
 - Local tools: `swagger-ui` or `redoc-cli`
 - Spectral: Automated linting for API contract validation in CI.
+
+To run API linting locally:
+```bash
+# Using Node
+spectral lint openapi.yaml
+# Using Docker
+docker run --rm -v $(pwd):/tmp stoplight/spectral lint /tmp/openapi.yaml
+```
 
 ---
 

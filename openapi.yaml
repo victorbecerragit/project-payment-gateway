@@ -316,33 +316,6 @@ components:
           description: Last status update timestamp
           example: '2024-01-15T10:05:00Z'
 
-    PaymentStatus:
-      type: object
-      properties:
-        payment_id:
-          type: string
-          description: Unique payment identifier
-          example: pay_20240115100000
-        status:
-          type: string
-          description: Current payment status
-          enum: [pending, processing, completed, failed, cancelled]
-          example: completed
-        transaction_id:
-          type: string
-          description: External transaction identifier
-          example: txn_20240115100000
-        timestamp:
-          type: string
-          format: date-time
-          description: Webhook event timestamp
-          example: '2024-01-15T10:05:00Z'
-        updated_at:
-          type: string
-          format: date-time
-          description: Last update timestamp
-          example: '2024-01-15T10:05:00Z'
-
     WebhookPayload:
       type: object
       required:
