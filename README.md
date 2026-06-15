@@ -317,8 +317,7 @@ go run cmd/api/main.go
 make docker-build
 kind load docker-image payment-gateway:latest --name payment-demo
 # Apply Kustomize manifests
-kubectl apply -k k8s/kustomize/eso/   # Secrets first
-kubectl apply -k k8s/kustomize/base/  # App stack
+make demo-up
 ```
 
 #### Test API Endpoints
@@ -346,6 +345,8 @@ curl -X POST http://payment-gateway/api/v1/payments \
 # Get payment status
 curl "http://payment-gateway/api/v1/payments/pay_20260615xxxxxx"
 ```
+
+> 📋 **Full demo walkthrough** — for the complete step-by-step interview demo including Stripe webhook flow, idempotency, DB verification, and observability, see [docs/DEMO.md](docs/DEMO.md).
 
 ---
 

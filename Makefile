@@ -1,4 +1,4 @@
-.PHONY: help build run test clean docker-build docker-run k8s-deploy k8s-delete
+.PHONY: help build run test clean docker-build docker-run k8s-deploy k8s-delete demo-up demo-down
 
 # Variables
 APP_NAME := payment-gateway
@@ -61,7 +61,41 @@ docker-push: ## Push Docker image to registry
 	@echo "Pushing to $(REGISTRY)..."
 	docker push $(REGISTRY)/$(DOCKER_IMAGE)
 
-k8s-deploy: ## Deploy to Kubernetes
+demo-up: ## Deploy full demo stack to kind (ESO secrets first, then app). See docs/DEMO.md.
+	@echo "[demo-up] Step 1/3 — applying ESO secrets..."
+	kubectl apply -k k8s/kustomize/eso/
+	@echo "[demo-up] Step 2/3 — waiting for ExternalSecret to sync..."
+	kubectl wait --for=condition=Ready externalsecret/payment-gateway-secrets --timeout=30s
+	@echo "[demo-up] Step 3/3 — deploying full stack (postgres + gateway + frontend + stripe-listener)..."
+	kubectl apply -k k8s/kustomize/base/
+	kubectl wait --for=condition=ready pod -l app=payment-gateway --timeout=90s
+	@echo ""
+	@echo "✅ Demo stack is up. Open http://payment-gateway in your browser."
+	@echo "   Run 'make demo-status' to check all pods."
+
+demo-down: ## Tear down the full demo stack (app + ESO secrets)
+	@echo "[demo-down] Deleting app stack..."
+	kubectl delete job stripe-trigger-demo --ignore-not-found
+	kubectl delete -k k8s/kustomize/base/ --ignore-not-found
+	@echo "[demo-down] Deleting ESO secrets..."
+	kubectl delete -k k8s/kustomize/eso/ --ignore-not-found
+	@echo ""
+	@echo "✅ Demo stack removed."
+
+demo-status: ## Show status of all demo pods, services, and HPA
+	@echo "=== Pods ==="
+	kubectl get pods
+	@echo ""
+	@echo "=== Services ==="
+	kubectl get svc
+	@echo ""
+	@echo "=== HPA ==="
+	kubectl get hpa 2>/dev/null || echo "No HPA found"
+	@echo ""
+	@echo "=== ExternalSecret ==="
+	kubectl get externalsecret payment-gateway-secrets 2>/dev/null || echo "Not found"
+
+k8s-deploy: ## Deploy to Kubernetes (legacy — prefer make demo-up)
 	@echo "Deploying to Kubernetes..."
 	kubectl apply -f k8s/configmap.yaml
 	kubectl apply -f k8s/deployment.yaml
@@ -71,7 +105,7 @@ k8s-deploy: ## Deploy to Kubernetes
 	@echo "Waiting for pods to be ready..."
 	kubectl wait --for=condition=ready pod -l app=payment-gateway --timeout=60s
 
-k8s-delete: ## Delete Kubernetes resources
+k8s-delete: ## Delete Kubernetes resources (legacy — prefer make demo-down)
 	@echo "Deleting Kubernetes resources..."
 	kubectl delete -f k8s/ --ignore-not-found=true
 
