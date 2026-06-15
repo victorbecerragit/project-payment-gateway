@@ -26,7 +26,7 @@ Run once per machine. Skip if your kind cluster already exists.
 
 ```bash
 # Create kind cluster
-kind create cluster --name payment-demo
+kind create cluster --name payment-demo --config kind-config.yaml
 
 # Nginx ingress controller
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
@@ -115,16 +115,12 @@ stripe-listener-xxx                1/1     Running
 
 ---
 
-## 3. Open port-forwards
+## 3. Access the Application
 
-In a dedicated terminal, keep these running throughout the demo:
-
-```bash
-kubectl port-forward svc/payment-gateway 8080:80 &
-kubectl port-forward svc/frontend 3000:80 &
-```
-
-Open the demo UI: **http://localhost:3000**
+Since we configured `kind` with port-mappings and updated `/etc/hosts`, the application is available at:
+*   **UI:** http://payment-gateway
+*   **API:** http://payment-gateway/api
+*   *No port-forwarding required.*
 
 ---
 
@@ -137,7 +133,7 @@ Click **Create Payment** in the browser. A new row appears with status `pending`
 ```bash
 IDEM="demo-$(date +%s)"
 
-PAYMENT=$(curl -s -X POST http://localhost:8080/api/v1/payments \
+PAYMENT=$(curl -s -X POST http://payment-gateway/api/v1/payments \
   -H "Content-Type: application/json" \
   -H "X-Idempotency-Key: $IDEM" \
   -d '{"amount":99.99,"currency":"USD","description":"Interview demo","customer_id":"cust_demo"}')
@@ -166,7 +162,7 @@ echo "Payment ID: $PAY_ID"
 Replay the **exact same request** with the same `X-Idempotency-Key`:
 
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/payments \
+curl -s -X POST http://payment-gateway/api/v1/payments \
   -H "Content-Type: application/json" \
   -H "X-Idempotency-Key: $IDEM" \
   -d '{"amount":99.99,"currency":"USD","description":"Interview demo","customer_id":"cust_demo"}' \
@@ -219,7 +215,7 @@ kubectl logs -l app=stripe-listener --tail=10
 ## 7. Verify status transition
 
 ```bash
-curl -s http://localhost:8080/api/v1/payments/$PAY_ID | python3 -m json.tool
+curl -s http://payment-gateway/api/v1/payments/$PAY_ID | python3 -m json.tool
 # "status": "completed"
 ```
 
@@ -275,7 +271,7 @@ kubectl delete pod busybox-postgres-query
 ```bash
 # Create a new payment to fail
 IDEM_FAIL="demo-fail-$(date +%s)"
-FAIL=$(curl -s -X POST http://localhost:8080/api/v1/payments \
+FAIL=$(curl -s -X POST http://payment-gateway/api/v1/payments \
   -H "Content-Type: application/json" \
   -H "X-Idempotency-Key: $IDEM_FAIL" \
   -d '{"amount":9.99,"currency":"USD","description":"Failure demo","customer_id":"cust_demo"}')
@@ -303,6 +299,8 @@ spec:
         - trigger
         - payment_intent.payment_failed
         - --override
+        - "payment_intent:amount=999"
+        - --override
         - "payment_intent:metadata[payment_id]=$FAIL_ID"
         env:
         - name: STRIPE_API_KEY
@@ -313,7 +311,7 @@ spec:
 EOF
 
 sleep 5
-curl -s http://localhost:8080/api/v1/payments/$FAIL_ID | python3 -m json.tool
+curl -s http://payment-gateway/api/v1/payments/$FAIL_ID | python3 -m json.tool
 # "status": "failed"
 ```
 
@@ -327,11 +325,11 @@ curl -s http://localhost:8080/api/v1/payments/$FAIL_ID | python3 -m json.tool
 
 ```bash
 # Prometheus metrics
-curl -s http://localhost:8080/metrics | grep -E "http_requests_total|http_request_duration"
+curl -s http://payment-gateway/metrics | grep -E "http_requests_total|http_request_duration"
 
 # Health and readiness probes
-curl -s http://localhost:8080/health
-curl -s http://localhost:8080/ready
+curl -s http://payment-gateway/health
+curl -s http://payment-gateway/ready
 ```
 
 | Metric | What it shows |
@@ -364,9 +362,6 @@ kubectl get hpa
 ## Teardown
 
 ```bash
-# Stop port-forwards
-kill %1 %2
-
 # Delete all cluster resources
 kubectl delete job stripe-trigger-demo --ignore-not-found
 kubectl delete -k k8s/kustomize/base/
@@ -401,7 +396,7 @@ kind delete cluster --name payment-demo
 | `stripe-listener` pod not starting | `kubectl get secret payment-gateway-secrets` — must exist with `STRIPE_API_KEY` key |
 | Job: `No pending payments found` | Create at least one payment in Step 4 before running the Job |
 | `[400]` on webhook | `STRIPE_WEBHOOK_SECRET` mismatch — re-apply `secretstore-literal-fake.yaml` and force-sync ESO: `kubectl annotate externalsecret payment-gateway-secrets force-sync=$(date +%s) --overwrite` |
-| Frontend "Network error" | Port-forward on `:8080` not running — redo Step 3 |
+| Frontend "Network error" | Ingress not reachable. Ensure `127.0.0.1 payment-gateway` is in /etc/hosts and Kind was created with port 80. |
 | `ImagePullBackOff` on payment-gateway | `kind load docker-image payment-gateway:latest --name payment-demo` |
 | `job already exists` error | `kubectl delete job stripe-trigger-demo` before re-applying |
 | ESO `SecretSyncedError` | Check `kubectl describe secretstore payment-gateway-secret-store` — re-apply with corrected values |

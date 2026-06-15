@@ -47,7 +47,7 @@ func setupTestDatabase(t *testing.T) (string, func()) {
 		id TEXT PRIMARY KEY,
 		transaction_id TEXT,
 		customer_id TEXT NOT NULL,
-		amount BIGINT NOT NULL,
+		amount NUMERIC(10,2) NOT NULL,
 		currency TEXT NOT NULL,
 		status TEXT NOT NULL,
 		idempotency_key TEXT,

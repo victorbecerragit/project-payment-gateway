@@ -31,15 +31,16 @@ See the [Stripe Demo Guide](docs/stripe-demo.md) for how to run the end-to-end f
 
 This payment gateway service is a microservice designed for Kubernetes environments. It provides RESTful APIs for payment processing with the following characteristics:
 
-### Key Features
+### Key Features & Design
 - **Stateless Design**: No local state, fully horizontally scalable
+- **Ingress-First**: Optimized for NGINX Ingress with path-based routing
 - **Health Checks**: Built-in liveness and readiness probes
 - **Cloud-Native**: 12-factor app compliant
 - **Security-First**: Non-root containers, read-only filesystem
 - **Observable**: Structured logging, metrics-ready endpoints
 
 ### Technology Stack
-- **Runtime**: Go 1.24
+- **Runtime**: Go 1.25
 - **API Specification**: OpenAPI 3.0
 - **Container**: Docker multi-stage builds
 - **Orchestration**: Kubernetes 1.25+
@@ -50,23 +51,20 @@ This payment gateway service is a microservice designed for Kubernetes environme
 ## 2. Architecture High-Level
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Internet / Load Balancer                 │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Kubernetes Ingress (NGINX)                      │
-│          (TLS Termination, Rate Limiting)                    │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                Payment Gateway Service                       │
-│                   (ClusterIP Service)                        │
-└────────────┬──────────────────────────┬─────────────────────┘
-             │                          │
-             ▼                          ▼
+    ┌─────────────────────────────────────────────────────────────┐
+    │              Kubernetes Ingress (NGINX)                      │
+    │          (Host: payment-gateway :80 -> :8080)               │
+    └────────────────────────┬────────────────────────────────────┘
+                             │
+        ┌────────────────────┴────────────────────┐
+        ▼                                         ▼
+┌────────────────┐                        ┌────────────────┐
+│   Frontend     │                        │ Payment Gateway │
+│   (Nginx)      │                        │ (Go Service)    │
+└────────────────┘                        └────────┬───────┘
+                                                   │
+                                          ┌────────┴────────┐
+                                          ▼                 ▼
     ┌────────────────┐        ┌────────────────┐
     │  Pod 1 (8080)  │        │  Pod 2 (8080)  │
     │ ┌────────────┐ │        │ ┌────────────┐ │
@@ -99,18 +97,21 @@ The development team has created a Go-based payment gateway with the following c
 ### Application Structure
 ```
 project-payment-gateway/
-├── cmd/api/                              # Application entry point
-├── internal/
-│   ├── domain/payment/                   # Business logic and entities
-│   ├── application/payment/              # Use-case orchestration
-│   ├── transport/http/                   # HTTP transport layer
-│   │   ├── handlers/                     # Request handlers
-│   │   ├── dto/                          # Data Transfer Objects
-│   │   ├── response/                     # Helper package for responses
-│   │   └── middleware/                   # HTTP middlewares
-│   └── platform/                         # Infrastructure helpers
-```
-├── k8s/                 # Kubernetes manifests
+├── cmd/api/                              # Entry point
+├── internal/                             # Core Logic (Domain-Driven)
+│   ├── domain/payment/                   # Status transitions & entities
+│   ├── application/payment/              # Provider-agnostic orchestration
+│   └── transport/http/                   # API Handlers & DTOs
+├── k8s/
+│   ├── domain/payment/                   # Status transitions & entities
+│   ├── application/payment/              # Provider-agnostic orchestration
+│   ├── transport/http/                   # API Handlers & DTOs
+│   └── storage/                          # Persistence (In-Memory/Postgres)
+├── k8s/
+│   └── kustomize/                        # K8s Overlays (Base, ESO, Tools)
+│       ├── base/                         # Core stack
+│       ├── eso/                          # External Secrets (Stripe keys)
+│       └── tools/                        # Stripe Listener & Triggers
 ├── openapi.yaml         # OpenAPI 3.0 specification
 ├── Dockerfile           # Multi-stage container build
 └── go.mod               # Go module dependencies
@@ -131,6 +132,7 @@ The complete API specification is available in `openapi.yaml`. You can view it u
 - [Swagger Editor](https://editor.swagger.io/)
 - [Redoc](https://github.com/Redocly/redoc)
 - Local tools: `swagger-ui` or `redoc-cli`
+- Spectral: Automated linting for API contract validation in CI.
 
 ---
 
@@ -178,7 +180,11 @@ As the DevOps/SRE engineer, your responsibilities include:
 
 This service follows Kubernetes best practices:
 
-### ✅ Stateless Design
+### ✅ Kustomize-Powered
+- Manifests are organized as reusable layers.
+- Environment-specific overrides (like Stripe keys) handled via External Secrets Operator (ESO).
+
+### ✅ Health & Resilience
 - No local storage dependencies
 - All state external (databases, caches)
 - Safe for horizontal scaling
@@ -187,6 +193,7 @@ This service follows Kubernetes best practices:
 - **Liveness**: `/health` - restarts unhealthy pods
 - **Readiness**: `/ready` - removes pods from load balancing if not ready
 - Configured with appropriate timeouts and thresholds
+- **Graceful Shutdown**: 10s pre-stop hook for connection draining.
 
 ### ✅ Resource Management
 ```yaml
@@ -203,6 +210,7 @@ resources:
 - Runs as non-root user (UID 1000)
 - Read-only root filesystem
 - Drops all capabilities
+- Read-only root filesystem with `emptyDir` mounts for temp paths.
 - No privilege escalation
 
 ### ✅ Rolling Updates
@@ -233,7 +241,7 @@ Ensures zero-downtime deployments.
 The Dockerfile uses multi-stage builds for optimization:
 
 1. **Build Stage**: 
-   - Uses `golang:1.24-alpine` for compilation
+   - Uses `golang:1.25-alpine` for compilation
    - Installs dependencies
    - Produces statically-linked binary
 
@@ -280,31 +288,54 @@ docker push <registry>/payment-gateway:latest
 - Docker (for containerization)
 - kubectl (for Kubernetes)
 - A Kubernetes cluster (minikube, kind, or cloud provider)
+This project is designed to run in **Kind** with a production-like Ingress setup.
 
 #### Run Locally
+**1. Configure Local DNS**
+Add this to your `/etc/hosts`:
+`127.0.0.1  payment-gateway`
+
+**2. Bootstrap Cluster**
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd project-payment-gateway
+# Create cluster with Port 80 mapping
+kind create cluster --name payment-demo --config kind-config.yaml
 
 # Install dependencies
 go mod download
+# Install Nginx Ingress & External Secrets Operator
+make bootstrap-cluster
+```
 
 # Run the application
 go run cmd/api/main.go
-
-# Test the API
-curl http://localhost:8080/health
+**3. Deploy Stack**
+```bash
+# Build image
+make docker-build
+kind load docker-image payment-gateway:latest --name payment-demo
+# Apply Kustomize manifests
+kubectl apply -k k8s/kustomize/eso/   # Secrets first
+kubectl apply -k k8s/kustomize/base/  # App stack
 ```
 
 #### Test API Endpoints
+**4. Access Dashboard**
+Open **http://payment-gateway** in your browser. 
+The "System Status" card will provide real-time health updates.
+
+#### Test API via CLI
 ```bash
-# Health check
-curl http://localhost:8080/health
+# Health checks (now via Ingress)
+curl http://payment-gateway/health
+curl http://payment-gateway/ready
 
 # Create a payment
-curl -X POST http://localhost:8080/api/v1/payments \
+curl -X POST http://payment-gateway/api/v1/payments \
   -H "Content-Type: application/json" \
+  -H "X-Idempotency-Key: demo-123" \
   -d '{
     "amount": 99.99,
     "currency": "USD",
@@ -313,7 +344,7 @@ curl -X POST http://localhost:8080/api/v1/payments \
   }'
 
 # Get payment status
-curl "http://localhost:8080/api/v1/payments/status?payment_id=pay_20240115100000"
+curl "http://payment-gateway/api/v1/payments/pay_20260615xxxxxx"
 ```
 
 ---
@@ -372,7 +403,7 @@ kubectl logs -l app=payment-gateway --tail=50
 kubectl port-forward svc/payment-gateway 8080:80
 
 # Test the service
-curl http://localhost:8080/health
+curl http://payment-gateway/health
 ```
 
 ### Step 5: Configure Ingress (Production)
@@ -485,8 +516,8 @@ kubectl top pods -l app=payment-gateway
 # Review HPA status
 kubectl describe hpa payment-gateway-hpa
 
-# Check metrics
-kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/default/pods
+# Check application metrics (Prometheus)
+curl -s http://payment-gateway/metrics | grep -E "http_requests_total|http_request_duration"
 ```
 
 ---

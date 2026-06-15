@@ -21,6 +21,11 @@ jobs:
           version: latest
           install-mode: goinstall
 
+      - name: Lint OpenAPI Spec (Spectral)
+        uses: stoplightio/spectral-action@v0.8.2
+        with:
+          file_glob: 'openapi.yaml'
+
   test:
     runs-on: ubuntu-latest
     steps:

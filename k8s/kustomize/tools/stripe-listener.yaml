@@ -1,0 +1,76 @@
+# stripe-listener.yaml
+# Runs the Stripe CLI in "listen" mode inside the cluster.
+# This forwards Stripe webhook events to the payment-gateway service,
+# eliminating the need to expose a public webhook URL during local/demo use.
+#
+# ┌─────────────┐    HTTPS     ┌──────────────┐   HTTP (in-cluster)   ┌─────────────────┐
+# │ Stripe Cloud│ ──────────▶  │ Stripe CLI   │ ────────────────────▶ │ payment-gateway │
+# │             │   WebSocket  │ (this pod)   │  /api/v1/webhooks/    │ :8080           │
+# └─────────────┘              └──────────────┘   stripe              └─────────────────┘
+#
+# When to use this:
+#   - Local / minikube / kind demo: YES — use this instead of Stripe Dashboard webhook URL
+#   - Production / staging with public URL: NO — register the URL in Stripe Dashboard instead
+#
+# Stripe Dashboard webhook registration (for public deployments):
+#   Dashboard → Developers → Webhooks → Add endpoint
+#   URL:    https://api.payment-gateway.example.com/api/v1/webhooks/stripe
+#   Events: payment_intent.succeeded
+#           payment_intent.payment_failed
+#           payment_intent.canceled
+#           charge.refunded
+#
+# Usage:
+#   kubectl apply -f k8s/tools/stripe-listener.yaml
+#   kubectl logs -l app=stripe-listener -f
+#   kubectl delete deployment stripe-listener   # to stop
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stripe-listener
+  namespace: default
+  labels:
+    app: stripe-listener
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stripe-listener
+  template:
+    metadata:
+      labels:
+        app: stripe-listener
+    spec:
+      containers:
+      - name: stripe-listener
+        image: stripe/stripe-cli:latest
+        command:
+        - stripe
+        - listen
+        - --forward-to
+        - http://payment-gateway:8080/api/v1/webhooks/payment
+        - --events
+        - payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,charge.refunded
+        # Add a debug log level for more verbose output
+        #- --log-level
+        #- debug
+        env:
+        - name: STRIPE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payment-gateway-secrets
+              key: STRIPE_API_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        # Stripe CLI does not expose HTTP — no probes needed
+#        livenessProbe:
+#          exec:
+#            command: ["stripe", "version"]
+#          initialDelaySeconds: 10
+#          periodSeconds: 30
+#          failureThreshold: 3

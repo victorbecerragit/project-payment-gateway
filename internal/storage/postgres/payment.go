@@ -183,14 +183,13 @@ func (r *repository) Save(ctx context.Context, p *payment.Payment) error {
 	ctx, span := r.tracer.StartSpan(ctx, "postgres.Save")
 	defer span.End()
 	span.SetAttribute("payment.id", p.ID)
-	// Convert domain float amount (dollars) to BIGINT (cents) for DB storage
-	amountCents := int64(p.Amount.Value() * 100)
+	amount := p.Amount.Value()
 
 	_, err := r.db.Exec(ctx, query,
 		p.ID,
 		nullString(p.TransactionID),
 		p.CustomerID.Value(),
-		amountCents,
+		amount,
 		string(p.Currency),
 		string(p.Status),
 		nullString(p.IdempotencyKey),
@@ -247,7 +246,7 @@ func (r *repository) GetByProviderRef(ctx context.Context, providerRef string) (
 func (r *repository) scanRow(row pgx.Row) (*payment.Payment, error) {
 	var (
 		p              payment.Payment
-		amountCents    int64
+		amount         float64
 		customerIDStr  string
 		currencyStr    string
 		statusStr      string
@@ -260,7 +259,7 @@ func (r *repository) scanRow(row pgx.Row) (*payment.Payment, error) {
 		&p.ID,
 		&transactionID,
 		&customerIDStr,
-		&amountCents,
+		&amount,
 		&currencyStr,
 		&statusStr,
 		&idempotencyKey,
@@ -278,7 +277,7 @@ func (r *repository) scanRow(row pgx.Row) (*payment.Payment, error) {
 	}
 
 	// Rehydrate Value Objects and Enums
-	p.Amount = payment.MustNewAmount(float64(amountCents) / 100.0)
+	p.Amount = payment.MustNewAmount(amount)
 	p.CustomerID = payment.MustNewCustomerID(customerIDStr)
 	p.Currency = payment.Currency(currencyStr)
 	p.Status = payment.Status(statusStr)

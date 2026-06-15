@@ -60,10 +60,10 @@ spec:
           set -euo pipefail
 
           # stripe-cli is Alpine-based; use apk instead of apt-get
-          apk add --no-cache curl
+          apk add --no-cache curl jq
 
 
-          GATEWAY_URL="${GATEWAY_URL:-http://payment-gateway:8080/api/}" # Ensure this is correct
+          GATEWAY_URL="${GATEWAY_URL:-http://payment-gateway/api/}" # Ensure this is correct
           MODE="${MODE:-drain}"           # drain | create
           SCENARIO="${SCENARIO:-stripe}"  # stripe | stripe-fail
           REQUESTS="${REQUESTS:-5}"       # only used in MODE=create
@@ -81,7 +81,12 @@ spec:
 
           trigger_webhook() {
             local PAY_ID="$1"
-            stripe trigger "$EVENT"               --override "payment_intent:metadata[payment_id]=$PAY_ID"               && echo "  ✅ Triggered: $PAY_ID"               || echo "  ❌ Failed:    $PAY_ID"
+            local CENTS="$2"
+            stripe trigger "$EVENT" \
+              --override "payment_intent:amount=$CENTS" \
+              --override "payment_intent:metadata[payment_id]=$PAY_ID" \
+              && echo "  ✅ Triggered: $PAY_ID ($CENTS cents)" \
+              || echo "  ❌ Failed:    $PAY_ID"
             sleep 0.3
           }
 
@@ -90,10 +95,8 @@ spec:
           if [ "$MODE" = "drain" ]; then
             echo "▶ Fetching pending payments from ${GATEWAY_URL}v1/payments?status=pending..."
             RESPONSE=$(curl -sf "${GATEWAY_URL}v1/payments?status=pending" || echo "[]")
-            # Extract payment_id values using grep + sed (no jq in stripe-cli image)
-            PAY_IDS=$(echo "$RESPONSE" | grep -o '"payment_id":"[^"]*"' | sed 's/"payment_id":"//;s/"//')
 
-            COUNT=$(echo "$PAY_IDS" | grep -c 'pay_' || true)
+            COUNT=$(echo "$RESPONSE" | jq '. | length')
             if [ "$COUNT" -eq 0 ]; then
               echo "  ⚠ No pending payments found. Nothing to trigger."
               echo "  Tip: create payments first with MODE=create, or run the load generator."
@@ -102,8 +105,11 @@ spec:
 
             echo "  Found $COUNT pending payment(s). Triggering webhooks..."
             echo ""
-            for PAY_ID in $PAY_IDS; do
-              trigger_webhook "$PAY_ID"
+            echo "$RESPONSE" | jq -c '.[]' | while read -r item; do
+              PAY_ID=$(echo "$item" | jq -r '.payment_id')
+              AMT=$(echo "$item" | jq -r '.amount')
+              CENTS=$(awk "BEGIN { print int($AMT * 100 + 0.5) }")
+              trigger_webhook "$PAY_ID" "$CENTS"
             done
 
           # ── MODE: create ───────────────────────────────────────────────────
@@ -113,15 +119,17 @@ spec:
             echo ""
             for i in $(seq 1 "$REQUESTS"); do
               IDEM="job-$(date +%s%N)-$i"
+              AMT="49.99"
+              CENTS="4999"
               BODY=$(curl -sf -X POST "${GATEWAY_URL}v1/payments" \
                 -H "Content-Type: application/json" \
                 -H "X-Idempotency-Key: $IDEM" \
-                -d "{\"amount\":49.99,\"currency\":\"USD\",\"description\":\"K8s demo job payment $i\",\"customer_id\":\"cust_k8s_demo\"}" \
+                -d "{\"amount\":$AMT,\"currency\":\"USD\",\"description\":\"K8s demo job payment $i\",\"customer_id\":\"cust_k8s_demo\"}" \
                 || echo "{}")
-              PAY_ID=$(echo "$BODY" | grep -o '"payment_id":"[^"]*"' | sed 's/"payment_id":"//;s/"//')
+              PAY_ID=$(echo "$BODY" | jq -r '.payment_id // empty')
               if [ -n "$PAY_ID" ]; then
                 echo "  ✅ Created [$i/$REQUESTS]: $PAY_ID"
-                trigger_webhook "$PAY_ID"
+                trigger_webhook "$PAY_ID" "$CENTS"
               else
                 echo "  ❌ Failed  [$i/$REQUESTS]: $BODY"
               fi

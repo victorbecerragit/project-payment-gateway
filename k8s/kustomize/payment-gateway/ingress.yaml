@@ -1,3 +1,8 @@
+# This Ingress allows access via http://payment-gateway
+# Requirements:
+# 1. /etc/hosts contains: 127.0.0.1 payment-gateway
+# 2. Kind cluster created with extraPortMappings for hostPort 80
+# 3. Nginx Ingress Controller installed
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -14,6 +19,9 @@ metadata:
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST, DELETE, PATCH, OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,X-Idempotency-Key,X-Correlation-ID,Stripe-Signature,Origin,Accept"
     nginx.ingress.kubernetes.io/proxy-body-size: "4m"
+    # Automatically retry the next pod if the current one returns an error or times out
+    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503 http_504"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
 spec:
   ingressClassName: nginx
   rules:
