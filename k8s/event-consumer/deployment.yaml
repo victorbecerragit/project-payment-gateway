@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-event-consumer
+  namespace: payment-system
+  labels:
+    app: payment-event-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-event-consumer
+  template:
+    metadata:
+      labels:
+        app: payment-event-consumer
+    spec:
+      containers:
+        - name: consumer
+          image: payment-event-consumer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BROKER
+              value: "payment-kafka-kafka-bootstrap.payment-system:9092"
+            - name: KAFKA_TOPIC
+              value: "payment-events"
+            - name: KAFKA_GROUP_ID
+              value: "payment-audit-consumer"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
