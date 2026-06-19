@@ -90,7 +90,7 @@ func main() {
 		pub = events.NewNoOpPublisher()
 		slogext.Ctx(context.Background()).Info("using noop publisher (KAFKA_BROKER not set)")
 	}
-	defer pub.Close()
+	defer func() { _ = pub.Close() }()
 
 	// Initialize Services
 	healthService := apphealth.NewService()

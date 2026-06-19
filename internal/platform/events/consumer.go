@@ -28,7 +28,7 @@ func NewConsumer(broker, topic, groupID string) *Consumer {
 
 // Run blocks and calls handler for each message. Returns on context cancellation.
 func (c *Consumer) Run(ctx context.Context, handler func(PaymentEvent) error) error {
-	defer c.reader.Close()
+	defer func() { _ = c.reader.Close() }()
 	for {
 		msg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
