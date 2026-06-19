@@ -9,7 +9,7 @@ Based on guides from https://github.com/Labs64/labs64.io-payment-gateway and ins
 
 This generic generic payment gateway serves as a proof of value (POV) for how payment integrations should operate. While the core application code is strictly **provider-agnostic**, it features two built-in demo paths:
 1. **Mock End-to-End**: Test internal routing, endpoints, and deployment without external dependencies.
-2. **Stripe Demo Track**: A real-world validation path showing how a public `PaymentIntent` webhook updates localized payment states. Setting up Stripe is completely optional and isolated in the `extras/stripe-sandbox` package.
+2. **Stripe Demo Track**: A real-world validation path showing how a public `PaymentIntent` webhook updates localized payment states. Setting up Stripe is completely optional and isolated in the `demo/stripe-sandbox` package.
 
 See the [Stripe Demo Guide](docs/stripe-demo.md) for how to run the end-to-end flow with a real provider, or use our [Load Generator](demo/loadgenerator/README.md) to generate traffic.
 
@@ -17,6 +17,7 @@ See the [Stripe Demo Guide](docs/stripe-demo.md) for how to run the end-to-end f
 
 1. [Overview for DevOps/SRE](#1-overview-for-devopssre)
 2. [Architecture High-Level](#2-architecture-high-level)
+   - [Kafka Event Bus](#2a-kafka-event-bus)
 3. [What Developers Built](#3-what-developers-built)
 4. [Your DevOps/SRE Responsibilities](#4-your-devopssre-responsibilities)
 5. [Kubernetes-Safe Requirements](#5-kubernetes-safe-requirements)
@@ -45,6 +46,7 @@ This payment gateway service is a microservice designed for Kubernetes environme
 - **Container**: Docker multi-stage builds
 - **Orchestration**: Kubernetes 1.25+
 - **Ingress**: NGINX Ingress Controller
+- **Event Bus**: Apache Kafka (Strimzi operator, KRaft mode) — event-driven decoupling of payment lifecycle events from downstream consumers
 
 ---
 
@@ -90,6 +92,21 @@ This payment gateway service is a microservice designed for Kubernetes environme
 
 ---
 
+## 2a. Kafka Event Bus
+
+Payment lifecycle events are published to Apache Kafka after each state transition.
+Kafka runs on Kubernetes managed by the [Strimzi operator](https://strimzi.io).
+
+| Component | Description |
+|---|---|
+| Topic | `payment-events` — 3 partitions, 7-day retention |
+| Producer | `internal/platform/events` — publishes after `CreatePayment` and `ProcessEvent` |
+| Consumer | `cmd/payment-event-consumer` — audit log worker |
+
+See [docs/KAFKA.md](docs/KAFKA.md) for the full architecture and demo steps.
+
+---
+
 ## 3. What Developers Built
 
 The development team has created a Go-based payment gateway with the following components:
@@ -97,24 +114,25 @@ The development team has created a Go-based payment gateway with the following c
 ### Application Structure
 ```
 project-payment-gateway/
-├── cmd/api/                              # Entry point
-├── internal/                             # Core Logic (Domain-Driven)
-│   ├── domain/payment/                   # Status transitions & entities
-│   ├── application/payment/              # Provider-agnostic orchestration
-│   └── transport/http/                   # API Handlers & DTOs
+├── cmd/
+│   ├── api/                                 # API entry point
+│   └── payment-event-consumer/              # Kafka consumer entry point
+├── internal/
+│   ├── domain/payment/                      # Status transitions & entities
+│   ├── application/payment/                 # Provider-agnostic orchestration
+│   ├── transport/http/                      # API Handlers & DTOs
+│   └── platform/events/                     # Kafka publisher, consumer & event schema
 ├── k8s/
-│   ├── domain/payment/                   # Status transitions & entities
-│   ├── application/payment/              # Provider-agnostic orchestration
-│   ├── transport/http/                   # API Handlers & DTOs
-│   └── storage/                          # Persistence (In-Memory/Postgres)
-├── k8s/
-│   └── kustomize/                        # K8s Overlays (Base, ESO, Tools)
-│       ├── base/                         # Core stack
-│       ├── eso/                          # External Secrets (Stripe keys)
-│       └── tools/                        # Stripe Listener & Triggers
-├── openapi.yaml         # OpenAPI 3.0 specification
-├── Dockerfile           # Multi-stage container build
-└── go.mod               # Go module dependencies
+│   ├── kafka/                               # Strimzi operator, Kafka cluster & topic
+│   ├── event-consumer/                      # Consumer Deployment
+│   └── kustomize/                           # K8s Overlays (Base, ESO, Tools)
+│       ├── base/                            # Core stack
+│       ├── eso/                             # External Secrets (Stripe keys)
+│       └── tools/                           # Stripe Listener & Triggers
+├── docs/                                    # Architecture & demo docs
+├── openapi.yaml                            # OpenAPI 3.0 specification
+├── Dockerfile                              # Multi-stage container build
+└── go.mod                                  # Go module dependencies
 ```
 
 ### API Endpoints
@@ -216,9 +234,8 @@ resources:
 
 ### ✅ Security Context
 - Runs as non-root user (UID 1000)
-- Read-only root filesystem
+- Read-only root filesystem with `emptyDir` mounts for temp paths
 - Drops all capabilities
-- Read-only root filesystem with `emptyDir` mounts for temp paths.
 - No privilege escalation
 
 ### ✅ Rolling Updates
@@ -317,9 +334,12 @@ go mod download
 make bootstrap-cluster
 ```
 
-# Run the application
+**3. Run the application**
+```bash
 go run cmd/api/main.go
-**3. Deploy Stack**
+```
+
+**4. Deploy Stack**
 ```bash
 # Build image
 make docker-build
@@ -329,7 +349,7 @@ make demo-up
 ```
 
 #### Test API Endpoints
-**4. Access Dashboard**
+**5. Access Dashboard**
 Open **http://payment-gateway** in your browser. 
 The "System Status" card will provide real-time health updates.
 
