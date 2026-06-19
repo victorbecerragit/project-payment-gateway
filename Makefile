@@ -170,6 +170,30 @@ consumer-lag: ## Show consumer group lag for payment-audit-consumer
 	  --describe \
 	  --group payment-audit-consumer
 
+kafka-dlq-watch: ## Monitor dead letter queue in real time
+	kubectl exec -it payment-kafka-payment-kafka-brokers-0 -n payment-system -- \
+	  bin/kafka-console-consumer.sh \
+	  --bootstrap-server localhost:9092 \
+	  --topic payment-events-dlq \
+	  --from-beginning
+
+kafka-dlq-count: ## Show partition details for DLQ topic
+	kubectl exec -it payment-kafka-payment-kafka-brokers-0 -n payment-system -- \
+	  bin/kafka-topics.sh \
+	  --bootstrap-server localhost:9092 \
+	  --describe \
+	  --topic payment-events-dlq
+
+kafka-dlq-replay: ## Replay DLQ original_event fields back into payment-events
+	@echo "Extract original events and replay — run manually after confirming root cause fixed:"
+	@echo "kubectl exec -it payment-kafka-payment-kafka-brokers-0 -n payment-system -- \\"
+	@echo "  bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \\"
+	@echo "  --topic payment-events-dlq --from-beginning \\"
+	@echo "  | jq -c '.original_event' \\"
+	@echo "  | kubectl exec -i payment-kafka-payment-kafka-brokers-0 -n payment-system -- \\"
+	@echo "  bin/kafka-console-producer.sh --bootstrap-server localhost:9092 \\"
+	@echo "  --topic payment-events"
+
 demo-kafka: ## Full Kafka demo: deploy stack, trigger payment, show events
 	@echo "==> Starting Kafka stack..."
 	kubectl apply -k k8s/kafka/

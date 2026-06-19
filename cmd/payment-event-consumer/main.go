@@ -14,14 +14,19 @@ func main() {
 	broker := requireEnv("KAFKA_BROKER")
 	topic := getEnv("KAFKA_TOPIC", "payment-events")
 	groupID := getEnv("KAFKA_GROUP_ID", "payment-audit-consumer")
+	dlqTopic := getEnv("KAFKA_DLQ_TOPIC", "payment-events-dlq")
 
 	slog.Info("payment-event-consumer starting",
 		"broker", broker,
 		"topic", topic,
 		"group_id", groupID,
+		"dlq_topic", dlqTopic,
 	)
 
-	consumer := events.NewConsumer(broker, topic, groupID)
+	dlq := events.NewDLQPublisher(broker, dlqTopic, topic, groupID)
+	defer func() { _ = dlq.Close() }()
+
+	consumer := events.NewConsumer(broker, topic, groupID, dlq)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

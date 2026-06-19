@@ -1,0 +1,13 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payment-events-dlq
+  namespace: payment-system
+  labels:
+    strimzi.io/cluster: payment-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: "2592000000"   # 30 days — longer than main topic for investigation
+    cleanup.policy: delete

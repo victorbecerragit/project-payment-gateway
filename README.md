@@ -100,10 +100,12 @@ Kafka runs on Kubernetes managed by the [Strimzi operator](https://strimzi.io).
 | Component | Description |
 |---|---|
 | Topic | `payment-events` — 3 partitions, 7-day retention |
+| DLQ Topic | `payment-events-dlq` — 3 partitions, 30-day retention for failed events |
 | Producer | `internal/platform/events` — publishes after `CreatePayment` and `ProcessEvent` |
-| Consumer | `cmd/payment-event-consumer` — audit log worker |
+| Consumer | `cmd/payment-event-consumer` — audit log worker with retry + DLQ routing |
 
 See [docs/KAFKA.md](docs/KAFKA.md) for the full architecture and demo steps.
+See [docs/DLQ.md](docs/DLQ.md) for error classification, replay workflow, and monitoring.
 
 ---
 

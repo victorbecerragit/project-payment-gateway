@@ -104,6 +104,7 @@ All events are JSON objects written to the `payment-events` topic.
 | Topic | Partitions | Retention | Purpose |
 |-------|-----------|-----------|---------|
 | `payment-events` | 3 | 7 days | Payment lifecycle events (created, completed, failed, refunded) |
+| `payment-events-dlq` | 3 | 30 days | Failed events — retry exhausted or permanently invalid |
 
 ## 5. Running the Kafka Stack
 
@@ -166,7 +167,13 @@ payment-audit-consumer payment-events  1          3               3             
 payment-audit-consumer payment-events  2          2               2               0
 ```
 
-## 7. Interview Talking Points
+## 7. Dead Letter Queue
+
+Failed events are routed to `payment-events-dlq` with a structured envelope containing the
+original event, error reason, retry count, and failure timestamp. See [docs/DLQ.md](DLQ.md)
+for the full error classification, replay workflow, and monitoring commands.
+
+## 8. Interview Talking Points
 
 - **Event-driven decoupling** — the API publishes events without knowing who consumes them. Adding a new consumer (analytics, notifications) requires zero changes to the payment service.
 - **Consumer groups** — multiple consumer instances share partitions automatically. Adding horizontal scale to the audit worker is a replica bump in the Deployment.

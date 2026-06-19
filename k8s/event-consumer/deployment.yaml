@@ -26,6 +26,8 @@ spec:
               value: "payment-events"
             - name: KAFKA_GROUP_ID
               value: "payment-audit-consumer"
+            - name: KAFKA_DLQ_TOPIC
+              value: "payment-events-dlq"
           resources:
             requests:
               cpu: "50m"

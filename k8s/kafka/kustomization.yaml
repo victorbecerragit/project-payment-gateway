@@ -4,3 +4,4 @@ resources:
   - kafka-cluster.yaml
   - kafka-nodepool.yaml
   - kafka-topic-events.yaml
+  - kafka-topic-dlq.yaml
