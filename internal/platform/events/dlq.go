@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/metrics"
 )
 
 const maxRetries = 3
@@ -68,6 +69,7 @@ func (d *DLQPublisher) Send(ctx context.Context, event PaymentEvent, retryCount 
 		)
 		return err
 	}
+	metrics.DLQTotal.WithLabelValues(event.EventType, reason).Inc()
 	slog.WarnContext(ctx, "event routed to DLQ",
 		"payment_id", event.PaymentID,
 		"event_type", event.EventType,

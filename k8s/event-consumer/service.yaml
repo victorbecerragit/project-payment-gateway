@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-event-consumer
+  namespace: payment-system
+  labels:
+    app: payment-event-consumer
+spec:
+  selector:
+    app: payment-event-consumer
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

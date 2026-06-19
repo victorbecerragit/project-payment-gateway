@@ -1,14 +1,15 @@
 #!/bin/bash
 # Payment Gateway Load Generator
-# Scenarios: mock | stripe | stripe-fail | stress
+# Scenarios: mock | stripe | stripe-fail | multi-state | stress
 
 set -euo pipefail
 
 SCENARIO="${1:-mock}"
-GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
+GATEWAY_URL="${GATEWAY_URL:-http://payment-gateway}"
 REQUESTS="${REQUESTS:-5}"
 DELAY="${DELAY:-0.5}"          # seconds between requests
 TRIGGER_WEBHOOKS="${TRIGGER_WEBHOOKS:-false}"
+WEBHOOK_SECRET="${WEBHOOK_SECRET:-}"  # Falls back to kubectl get secret
 
 CUSTOMERS=("cust_alice" "cust_bob" "cust_carol" "cust_dave" "cust_eve")
 AMOUNTS=("9.99" "24.99" "49.99" "99.99" "199.99" "299.00")
@@ -24,6 +25,47 @@ create_payment() {
     -H "Content-Type: application/json" \
     -H "X-Idempotency-Key: $idem" \
     -d "{\"amount\":$amount,\"currency\":\"$currency\",\"description\":\"$description\",\"customer_id\":\"$customer\"}"
+}
+
+send_webhook() {
+  local event_type="$1" payment_id="$2"
+
+  # Map event_type to Stripe format
+  local stripe_type stripe_status
+  case "$event_type" in
+    payment.completed)  stripe_type="payment_intent.succeeded"; stripe_status="succeeded" ;;
+    payment.failed)     stripe_type="payment_intent.payment_failed"; stripe_status="failed" ;;
+    payment.cancelled)  stripe_type="payment_intent.canceled"; stripe_status="canceled" ;;
+    *)                  echo "unknown" ;;
+  esac
+
+  # Build Stripe-format payload
+  local timestamp
+  timestamp=$(date +%s)
+  local evt_id="evt_$(uuid | tr -d '-')"
+  local pi_id="pi_$(uuid | tr -d '-')"
+  local payload
+  payload=$(printf '{"id":"%s","type":"%s","data":{"object":{"id":"%s","object":"payment_intent","status":"%s","metadata":{"payment_id":"%s"}}}}' \
+    "$evt_id" "$stripe_type" "$pi_id" "$stripe_status" "$payment_id")
+
+  # Compute HMAC-SHA256 signature: signed_content = timestamp + "." + payload
+  local signed_content="${timestamp}.${payload}"
+  local secret="$WEBHOOK_SECRET"
+
+  # Fallback: try fetching webhook secret from cluster if not set via env
+  if [ -z "$secret" ]; then
+    secret=$(kubectl get secret -n default payment-gateway-secrets -o jsonpath='{.data.STRIPE_WEBHOOK_SECRET}' 2>/dev/null | base64 -d) || true
+  fi
+
+  local signature=""
+  if [ -n "$secret" ]; then
+    signature=$(printf '%s' "$signed_content" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}') || true
+  fi
+
+  curl -s -o /dev/null -w "%{http_code}" -X POST "$GATEWAY_URL/api/v1/webhooks/payment" \
+    -H "Content-Type: application/json" \
+    -H "Stripe-Signature: t=${timestamp},v1=${signature}" \
+    -d "$payload"
 }
 
 echo "============================================"
@@ -127,7 +169,72 @@ case "$SCENARIO" in
     done
     ;;
 
-  # ── Scenario 4: Stress (mock, no external deps) ──────────────────────────
+  # ── Scenario 4: Multi-state (mock webhooks, exercises Grafana metrics) ──
+  multi-state)
+    echo "▶ Multi-state: creating $REQUESTS payments across pending/completed/failed/cancelled"
+    echo ""
+    STATES=("pending" "completed" "failed" "cancelled")
+    STATE_LABELS=("pending" "completed" "failed" "cancelled")
+    WEBHOOK_TYPES=("" "payment.completed" "payment.failed" "payment.cancelled")
+    CREATED=()
+
+    for i in $(seq 1 "$REQUESTS"); do
+      IDEM="load-multi-$(uuid)"
+      CUSTOMER=$(rand_element "${CUSTOMERS[@]}")
+      AMOUNT=$(rand_element "${AMOUNTS[@]}")
+      CURRENCY=$(rand_element "${CURRENCIES[@]}")
+      DESC=$(rand_element "${DESCRIPTIONS[@]}")
+
+      RESP=$(create_payment "$IDEM" "$CUSTOMER" "$AMOUNT" "$CURRENCY" "$DESC")
+      HTTP=$(echo "$RESP" | tail -1)
+      BODY=$(echo "$RESP" | head -1)
+      PAY_ID=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('payment_id','ERROR'))" 2>/dev/null || echo "ERROR")
+
+      STATE_IDX=$(( (i-1) % 4 ))
+      STATE="${STATE_LABELS[$STATE_IDX]}"
+
+      STATUS_ICON="✅"; [ "$HTTP" != "201" ] && STATUS_ICON="❌"
+      printf "%s [%d/%d] HTTP %s  %-25s  → %s\n" \
+        "$STATUS_ICON" "$i" "$REQUESTS" "$HTTP" "$PAY_ID" "$STATE"
+
+      CREATED+=("$PAY_ID|${STATE_IDX}|${AMOUNT}|${CURRENCY}|${CUSTOMER}")
+      sleep "$DELAY"
+    done
+
+    echo ""
+    echo "▶ Sending mock webhooks to advance payments..."
+    echo ""
+    for entry in "${CREATED[@]}"; do
+      IFS='|' read -r PAY_ID STATE_IDX AMOUNT CURRENCY CUSTOMER <<< "$entry"
+      WEBHOOK_TYPE="${WEBHOOK_TYPES[$STATE_IDX]}"
+      STATE="${STATE_LABELS[$STATE_IDX]}"
+
+      if [ -n "$WEBHOOK_TYPE" ]; then
+        WH_HTTP=$(send_webhook "$WEBHOOK_TYPE" "$PAY_ID")
+        if [ "$WH_HTTP" = "200" ]; then
+          printf "  ✅ %-25s  → %s\n" "$PAY_ID" "$STATE"
+        else
+          printf "  ❌ %-25s  webhook failed (HTTP %s)\n" "$PAY_ID" "$WH_HTTP"
+        fi
+        sleep 0.3
+      else
+        printf "  ⏸️  %-25s  → pending (no webhook)\n" "$PAY_ID"
+      fi
+    done
+
+    echo ""
+    echo "Summary:"
+    for state in pending completed failed cancelled; do
+      COUNT=$(printf '%s\n' "${CREATED[@]}" | awk -F'|' -v s="$state" '
+        BEGIN {t["pending"]=0; t["completed"]=1; t["failed"]=2; t["cancelled"]=3}
+        $2 == t[s] {c++}
+        END {print c+0}
+      ')
+      printf "  %-12s %d\n" "$state:" "$COUNT"
+    done
+    ;;
+
+  # ── Scenario 5: Stress (mock, no external deps) ──────────────────────────
   stress)
     REQUESTS="${REQUESTS:-50}"
     DELAY="0"
@@ -145,7 +252,7 @@ case "$SCENARIO" in
     echo "Done. ✅ $SUCCESS succeeded  ❌ $FAIL failed  (total: $REQUESTS)"
     ;;
 
-  # ── Scenario 5: Stress rate-limit (parallel burst, expects 429s) ─────────
+  # ── Scenario 6: Stress rate-limit (parallel burst, expects 429s) ─────────
   stress-rate-limit)
     REQUESTS="${REQUESTS:-60}"
     CONCURRENCY="${CONCURRENCY:-60}"  # fire all at once to blow past burst=20
@@ -232,14 +339,15 @@ case "$SCENARIO" in
 
   *)
     echo "Unknown scenario: $SCENARIO"
-    echo "Usage: $0 [mock|stripe|stripe-fail|stress|stress-rate-limit]"
+    echo "Usage: $0 [mock|stripe|stripe-fail|multi-state|stress|stress-rate-limit]"
     echo ""
     echo "Environment variables:"
-    echo "  GATEWAY_URL        (default: http://localhost:8080)"
+    echo "  GATEWAY_URL        (default: http://payment-gateway)"
     echo "  REQUESTS           (default: 5, stress-rate-limit default: 60)"
     echo "  CONCURRENCY        (default: 60, stress-rate-limit only)"
     echo "  DELAY              (default: 0.5s between requests)"
     echo "  TRIGGER_WEBHOOKS   (default: false, stripe mode only)"
+    echo "  WEBHOOK_SECRET     (default: auto-detect from cluster secret)"
     echo "  API_RATE_LIMIT     (display only, reads server env)"
     echo "  API_BURST          (display only, reads server env)"
     exit 1

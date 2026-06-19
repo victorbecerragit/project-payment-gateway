@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/metrics"
 )
 
 // Consumer reads PaymentEvents from a Kafka topic for a given consumer group.
@@ -70,7 +71,10 @@ func (c *Consumer) Run(ctx context.Context, handler func(PaymentEvent) error) er
 func (c *Consumer) processWithRetry(ctx context.Context, event PaymentEvent, handler func(PaymentEvent) error) error {
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		start := time.Now()
 		lastErr = handler(event)
+		metrics.ProcessingDuration.WithLabelValues(event.EventType).Observe(time.Since(start).Seconds())
+
 		if lastErr == nil {
 			return nil
 		}
@@ -82,6 +86,7 @@ func (c *Consumer) processWithRetry(ctx context.Context, event PaymentEvent, han
 
 		// Transient errors — retry with backoff
 		if attempt < maxRetries {
+			metrics.ConsumerRetries.WithLabelValues(event.EventType).Inc()
 			backoff := time.Duration(500*attempt*attempt) * time.Millisecond
 			slog.WarnContext(ctx, "retrying after transient error",
 				"event_id", event.EventID,

@@ -1,4 +1,4 @@
-.PHONY: help build run test clean docker-build docker-run k8s-deploy k8s-delete demo-up demo-down
+.PHONY: help build build-consumer run test clean docker-build docker-run docker-build-consumer k8s-deploy k8s-delete demo-up demo-down monitor-up monitor-down monitor-port-forward-grafana monitor-port-forward-prometheus
 
 # Variables
 APP_NAME := payment-gateway
@@ -15,6 +15,10 @@ help: ## Show this help message
 build: ## Build the Go application
 	@echo "Building $(APP_NAME)..."
 	go build -o bin/$(APP_NAME) ./cmd/api
+
+build-consumer: ## Build the event consumer binary
+	@echo "Building payment-event-consumer..."
+	go build -o bin/payment-event-consumer ./cmd/payment-event-consumer
 
 run: ## Run the application locally
 	@echo "Running $(APP_NAME)..."
@@ -47,6 +51,13 @@ docker-build: ## Build Docker image
 	docker build -t $(DOCKER_IMAGE) .
 	@if [ ! -z "$(REGISTRY)" ]; then \
 		docker tag $(DOCKER_IMAGE) $(REGISTRY)/$(DOCKER_IMAGE); \
+	fi
+
+docker-build-consumer: ## Build consumer Docker image
+	@echo "Building consumer Docker image..."
+	docker build -t payment-event-consumer:latest -f cmd/payment-event-consumer/Dockerfile .
+	@if [ ! -z "$(REGISTRY)" ]; then \
+		docker tag payment-event-consumer:latest $(REGISTRY)/payment-event-consumer:latest; \
 	fi
 
 docker-run: ## Run Docker container locally
@@ -205,3 +216,54 @@ demo-kafka: ## Full Kafka demo: deploy stack, trigger payment, show events
 	@echo "    kubectl apply -k k8s/event-consumer/"
 	@echo "    make stripe-trigger"
 	@echo "    make kafka-consume-raw"
+
+# ──────────────────────────────────────────────
+# Monitoring (Puzzle 6)
+# ──────────────────────────────────────────────
+
+MONITORING_NAMESPACE := monitoring
+
+.PHONY: install-prometheus-stack install-grafana-operator
+
+install-prometheus-stack: ## Install kube-prometheus-stack (Prometheus + Alertmanager + CRDs)
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+	helm repo update
+	helm upgrade --install prometheus-stack prometheus-community/kube-prometheus-stack \
+	  --namespace $(MONITORING_NAMESPACE) \
+	  --create-namespace \
+	  --set grafana.enabled=false \
+	  --wait
+
+install-grafana-operator: ## Install Grafana Operator (CRD-based Grafana management)
+	helm repo add grafana https://grafana.github.io/helm-charts
+	helm repo update
+	helm upgrade --install grafana-operator grafana/grafana-operator \
+	  --namespace $(MONITORING_NAMESPACE) \
+	  --create-namespace \
+	  --wait
+
+monitor-up: install-prometheus-stack install-grafana-operator ## Deploy full monitoring stack
+	@echo "==> Waiting for Grafana Operator CRDs to be established..."
+	kubectl wait --for=condition=Established crd/grafanas.grafana.integreatly.org --timeout=60s 2>/dev/null || true
+	sleep 5
+	kubectl apply -k k8s/monitoring/
+	@echo "==> Waiting for Grafana instance to be ready..."
+	kubectl wait --for=condition=Ready grafana/grafana -n $(MONITORING_NAMESPACE) --timeout=120s 2>/dev/null || true
+	@echo ""
+	@echo "==> Monitoring stack deployed."
+	@echo "    Prometheus: make monitor-port-forward-prometheus"
+	@echo "    Grafana:    make monitor-port-forward-grafana"
+	@echo "    Grafana admin password: admin"
+
+monitor-down: ## Remove monitoring stack (Helm releases + k8s manifests)
+	-helm uninstall grafana-operator --namespace $(MONITORING_NAMESPACE) 2>/dev/null
+	-helm uninstall prometheus-stack --namespace $(MONITORING_NAMESPACE) 2>/dev/null
+	kubectl delete -k k8s/monitoring/ --ignore-not-found 2>/dev/null
+
+monitor-port-forward-prometheus: ## Port-forward Prometheus to localhost:9090
+	@echo "Prometheus UI: http://localhost:9090"
+	kubectl port-forward svc/prometheus-stack-kube-prom-prometheus 9090:9090 -n $(MONITORING_NAMESPACE)
+
+monitor-port-forward-grafana: ## Port-forward Grafana to localhost:3000
+	@echo "Grafana UI: http://localhost:3000 (admin:admin)"
+	kubectl port-forward svc/grafana-service 3000:3000 -n $(MONITORING_NAMESPACE)

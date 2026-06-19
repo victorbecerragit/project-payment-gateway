@@ -107,6 +107,32 @@ Kafka runs on Kubernetes managed by the [Strimzi operator](https://strimzi.io).
 See [docs/KAFKA.md](docs/KAFKA.md) for the full architecture and demo steps.
 See [docs/DLQ.md](docs/DLQ.md) for error classification, replay workflow, and monitoring.
 
+### Observability (Prometheus + Grafana)
+
+Custom Prometheus metrics instrument the event pipeline at three points:
+
+| Metric | Type | Labels | Source |
+|---|---|---|---|
+| `payment_events_published_total` | Counter | `event_type`, `status` | `publisher.go` |
+| `payment_dlq_total` | Counter | `event_type`, `reason` | `dlq.go` |
+| `payment_processing_duration_seconds` | Histogram | `event_type` | `consumer.go` |
+| `payment_consumer_retry_total` | Counter | `event_type` | `consumer.go` |
+
+Both binaries expose `/metrics`:
+- **API** at `:8080/metrics` (same port as application)
+- **Consumer** at `:9090/metrics` (dedicated metrics port)
+
+Deploy the stack:
+```bash
+make monitor-up                    # Install Prometheus + Grafana + ServiceMonitors
+make monitor-port-forward-prometheus  # http://localhost:9090
+make monitor-port-forward-grafana     # http://localhost:3000 (admin:admin)
+```
+
+Kafka broker metrics are exposed via the built-in Strimzi JMX exporter (configured in `kafka-cluster.yaml`).
+
+See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for detailed metrics reference, PromQL queries, and Grafana dashboard panels.
+
 ---
 
 ## 3. What Developers Built
@@ -126,7 +152,8 @@ project-payment-gateway/
 │   └── platform/events/                     # Kafka publisher, consumer & event schema
 ├── k8s/
 │   ├── kafka/                               # Strimzi operator, Kafka cluster & topic
-│   ├── event-consumer/                      # Consumer Deployment
+│   ├── event-consumer/                      # Consumer Deployment + Service
+│   ├── monitoring/                          # Prometheus ServiceMonitors
 │   └── kustomize/                           # K8s Overlays (Base, ESO, Tools)
 │       ├── base/                            # Core stack
 │       ├── eso/                             # External Secrets (Stripe keys)

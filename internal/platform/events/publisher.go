@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/segmentio/kafka-go"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/metrics"
 )
 
 // Publisher is the only contract the application layer depends on.
@@ -43,6 +44,7 @@ func (p *KafkaPublisher) Publish(ctx context.Context, event PaymentEvent) error 
 		Value: data,
 	})
 	if err != nil {
+		metrics.EventsPublished.WithLabelValues(event.EventType, "error").Inc()
 		slog.ErrorContext(ctx, "failed to publish kafka event",
 			"event_type", event.EventType,
 			"payment_id", event.PaymentID,
@@ -50,6 +52,7 @@ func (p *KafkaPublisher) Publish(ctx context.Context, event PaymentEvent) error 
 		)
 		return err
 	}
+	metrics.EventsPublished.WithLabelValues(event.EventType, "success").Inc()
 	slog.InfoContext(ctx, "event published",
 		"topic", p.topic,
 		"event_type", event.EventType,

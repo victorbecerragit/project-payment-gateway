@@ -5,3 +5,4 @@ resources:
   - kafka-nodepool.yaml
   - kafka-topic-events.yaml
   - kafka-topic-dlq.yaml
+  - kafka-metrics-config.yaml

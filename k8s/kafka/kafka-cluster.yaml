@@ -17,6 +17,12 @@ spec:
       transaction.state.log.min.isr: "1"
       default.replication.factor: "1"
       min.insync.replicas: "1"
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics-config
+          key: jmx-exporter-config.yaml
   entityOperator:
     topicOperator: {}
     userOperator: {}
