@@ -101,6 +101,9 @@ spec:
               name: payment-gateway-secrets
               key: DATABASE_URL
               optional: true
+        # --- Kafka: event bus (optional, falls back to NoOp if unset) ---
+        - name: KAFKA_BROKER
+          value: "payment-kafka-kafka-bootstrap.payment-system:9092"
         resources:
           requests:
             memory: "64Mi"

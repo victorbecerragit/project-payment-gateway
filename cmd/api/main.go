@@ -14,6 +14,7 @@ import (
 	apppayment "github.com/victorbecerragit/project-payment-gateway/internal/application/payment"
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment" // Import domain payment
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/config"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/events"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
 	"github.com/victorbecerragit/project-payment-gateway/internal/provider"
@@ -79,9 +80,21 @@ func main() {
 		slogext.Ctx(context.Background()).Info("using mock payment provider", "provider", "mock") // Use slogext for consistency
 	}
 
+	// Initialize Publisher based on KAFKA_BROKER env var
+	kafkaBroker := os.Getenv("KAFKA_BROKER")
+	var pub events.Publisher
+	if kafkaBroker != "" {
+		pub = events.NewKafkaPublisher(kafkaBroker, "payment-events")
+		slogext.Ctx(context.Background()).Info("using kafka publisher", "broker", kafkaBroker)
+	} else {
+		pub = events.NewNoOpPublisher()
+		slogext.Ctx(context.Background()).Info("using noop publisher (KAFKA_BROKER not set)")
+	}
+	defer pub.Close()
+
 	// Initialize Services
 	healthService := apphealth.NewService()
-	paymentService := apppayment.NewService(paymentRepo, paymentProvider, appTracer)
+	paymentService := apppayment.NewService(paymentRepo, paymentProvider, appTracer, pub)
 	webhookVerifier := webhook.NewMockVerifier()
 
 	// Initialize Handlers

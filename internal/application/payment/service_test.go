@@ -20,7 +20,7 @@ func TestCreatePayment_Idempotency(t *testing.T) {
 	payment.SetSupportedCurrencies([]string{"USD"})
 	defer func() { payment.SetSupportedCurrencies(originalCurrencyStrs) }()
 	repo := inmemory.NewRepository(tracing.NewNoOpTracer())
-	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer())
+	svc := apppayment.NewService(repo, provider.NewMockProvider(tracing.NewNoOpTracer()), tracing.NewNoOpTracer(), nil)
 	ctx := context.Background()
 
 	p := &payment.Payment{

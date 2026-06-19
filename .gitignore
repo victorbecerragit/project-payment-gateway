@@ -8,8 +8,8 @@
 *.so
 *.dylib
 bin/
-api
-payment-event-consumer
+/api
+/payment-event-consumer
 
 # Test binary, built with `go test -c`
 *.test

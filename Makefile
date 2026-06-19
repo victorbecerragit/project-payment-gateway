@@ -142,3 +142,42 @@ compose-down: ## Stop docker-compose
 
 compose-logs: ## View docker-compose logs
 	docker-compose logs -f
+
+kafka-up: ## Deploy Strimzi operator + Kafka cluster + topic
+	kubectl apply -k k8s/kafka/
+
+kafka-down: ## Remove Kafka resources
+	kubectl delete -k k8s/kafka/ --ignore-not-found
+
+kafka-list-topics: ## List Kafka topics on the cluster
+	kubectl exec -it payment-kafka-payment-kafka-brokers-0 -n payment-system -- \
+	  bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+kafka-consume-raw: ## Read all events from payment-events topic (debug)
+	kubectl exec -it payment-kafka-payment-kafka-brokers-0 -n payment-system -- \
+	  bin/kafka-console-consumer.sh \
+	  --bootstrap-server localhost:9092 \
+	  --topic payment-events \
+	  --from-beginning
+
+consumer-logs: ## Tail payment-event-consumer logs
+	kubectl logs -l app=payment-event-consumer -n payment-system -f
+
+consumer-lag: ## Show consumer group lag for payment-audit-consumer
+	kubectl exec -it payment-kafka-payment-kafka-brokers-0 -n payment-system -- \
+	  bin/kafka-consumer-groups.sh \
+	  --bootstrap-server localhost:9092 \
+	  --describe \
+	  --group payment-audit-consumer
+
+demo-kafka: ## Full Kafka demo: deploy stack, trigger payment, show events
+	@echo "==> Starting Kafka stack..."
+	kubectl apply -k k8s/kafka/
+	@echo "==> Waiting for Kafka to be ready..."
+	kubectl wait kafka/payment-kafka --for=condition=Ready --timeout=300s -n payment-system
+	@echo "==> Kafka ready. Deploy consumer and trigger a payment:"
+	@echo "    docker build -t payment-event-consumer:latest -f cmd/payment-event-consumer/Dockerfile ."
+	@echo "    kind load docker-image payment-event-consumer:latest --name payment-demo"
+	@echo "    kubectl apply -k k8s/event-consumer/"
+	@echo "    make stripe-trigger"
+	@echo "    make kafka-consume-raw"

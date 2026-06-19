@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/victorbecerragit/project-payment-gateway/internal/domain/payment"
+	"github.com/victorbecerragit/project-payment-gateway/internal/platform/events"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/id"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/slogext"
 	"github.com/victorbecerragit/project-payment-gateway/internal/platform/tracing"
@@ -21,19 +22,24 @@ type Service interface {
 }
 
 type service struct {
-	repo     payment.Repository
-	provider provider.Provider
-	tracer   tracing.Tracer
+	repo      payment.Repository
+	provider  provider.Provider
+	tracer    tracing.Tracer
+	publisher events.Publisher
 }
 
-func NewService(repo payment.Repository, prov provider.Provider, tracer tracing.Tracer) Service {
+func NewService(repo payment.Repository, prov provider.Provider, tracer tracing.Tracer, pub events.Publisher) Service {
 	if tracer == nil {
 		tracer = tracing.NewNoOpTracer()
 	}
+	if pub == nil {
+		pub = events.NewNoOpPublisher()
+	}
 	return &service{
-		repo:     repo,
-		provider: prov,
-		tracer:   tracer,
+		repo:      repo,
+		provider:  prov,
+		tracer:    tracer,
+		publisher: pub,
 	}
 }
 
@@ -92,7 +98,24 @@ func (s *service) CreatePayment(ctx context.Context, p *payment.Payment) error {
 	span.SetAttribute("payment.id", p.ID)
 	span.SetAttribute("provider.transaction_id", p.TransactionID)
 
-	return s.repo.Save(ctx, p)
+	if err := s.repo.Save(ctx, p); err != nil {
+		return err
+	}
+	s.publishEvent(ctx, p, "payment.created")
+	return nil
+}
+
+func (s *service) publishEvent(ctx context.Context, p *payment.Payment, eventType string) {
+	_ = s.publisher.Publish(ctx, events.PaymentEvent{
+		EventID:   id.GeneratePaymentID(),
+		EventType: eventType,
+		PaymentID: p.ID,
+		Provider:  s.provider.Name(),
+		Amount:    p.Amount.Value(),
+		Currency:  string(p.Currency),
+		Status:    string(p.Status),
+		CreatedAt: time.Now(),
+	})
 }
 
 func (s *service) GetPayment(ctx context.Context, paymentID string) (*payment.Payment, error) {
@@ -165,7 +188,11 @@ func (s *service) ProcessEvent(ctx context.Context, e *payment.PaymentEvent) err
 	span.SetAttribute("payment.status", p.Status)
 	span.SetAttribute("event.type", e.Type)
 
-	return s.repo.Save(ctx, p)
+	if err := s.repo.Save(ctx, p); err != nil {
+		return err
+	}
+	s.publishEvent(ctx, p, "payment."+string(p.Status))
+	return nil
 }
 
 // ParseWebhook translates a provider-specific webhook payload into a domain PaymentEvent.

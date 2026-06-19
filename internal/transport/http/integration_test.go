@@ -32,7 +32,7 @@ func TestPaymentFlow_Integration(t *testing.T) {
 	tracer := tracing.NewNoOpTracer() // Use no-op tracer for integration tests
 	repo := inmemory.NewRepository(tracer)
 	paymentProvider := provider.NewMockProvider(tracer)
-	paymentSvc := apppayment.NewService(repo, paymentProvider, tracer)
+	paymentSvc := apppayment.NewService(repo, paymentProvider, tracer, nil)
 	healthSvc := apphealth.NewService()
 	verifier := webhook.NewMockVerifier()
 	requestMetrics := middleware.NewRequestMetrics()
