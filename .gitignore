@@ -8,6 +8,8 @@
 *.so
 *.dylib
 bin/
+api
+payment-event-consumer
 
 # Test binary, built with `go test -c`
 *.test
@@ -20,6 +22,7 @@ profile.cov
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+node_modules/
 
 # Go workspace file
 go.work
@@ -32,3 +35,7 @@ go.work.sum
 # .idea/
 # .vscode/
 k8s/eso/secretstore-literal.yaml
+
+# JS/TS (frontend tooling)
+package-lock.json
+package.json
